@@ -28,12 +28,16 @@
 --- AGENT-MAY-EDIT-BELOW ---
 
 ## Цель проекта
-Создать быструю MVP-систему для синхронизации данных из Google Sheets в Supabase PostgreSQL для немедленного использования в Web App.
+Синхронизация данных из Google Sheets в Supabase PostgreSQL для использования в Web App (pl_crm_from_gas).
 
-## Текущий статус: MVP ЗАВЕРШЕН
+## Текущий статус: ФАЗА 1 ЗАВЕРШЕНА ✅
 - [x] Автоматическая генерация схемы БД на основе Google Sheets.
-- [x] Реализована быстрая загрузка данных (Full Refresh) для ~21к строк.
-- [x] Настроено асинхронное подключение к Supabase (PgBouncer compatible).
+- [x] Быстрая загрузка данных (Full Refresh) с skip + log для битых строк.
+- [x] Асинхронное подключение к Supabase (PgBouncer compatible).
+- [x] Документация источников данных (_cur vs _hst).
+- [x] CDC-логика (hash-сравнение) — модуль src/cdc.py.
+- [x] Трансформация staging → public — transform_to_public.py.
+- [x] Главный скрипт пайплайна — run_pipeline.py.
 
 ## Ключевые зависимости
 - Python 3.11+
@@ -45,35 +49,40 @@
 ## Структура проекта
 ```text
 planeta_elt2/
-├── src/                # Исходный код (в процессе миграции на MVP)
-├── secrets/            # JSON ключи гугл-аккаунта (в .gitignore)
-├── get_headers.py      # Сбор заголовков из Sheets
-├── deploy_schema.py    # Развертывание таблиц в Supabase
-├── fast_loader.py      # Скрипт Full Refresh загрузки
-├── check_db.py         # Утилита проверки данных в БД
-├── sources.yml         # Конфигурация соответствия листов и таблиц
-├── HANDOVER.md         # Инструкция для тех. передачи
-└── .env                # Настройки подключения (в .gitignore)
+├── src/                  # Исходный код (модули)
+├── docs/                 # Документация
+│   └── DATA_SOURCES.md   # Описание _cur vs _hst
+├── secrets/              # JSON ключи (в .gitignore)
+├── get_headers.py        # Сбор заголовков из Sheets
+├── deploy_schema.py      # Развертывание таблиц в Supabase
+├── fast_loader.py        # Full Refresh с skip + log
+├── check_db.py           # Утилита проверки данных в БД
+├── sources.yml           # Конфигурация листов и таблиц
+├── HANDOVER.md           # Инструкция для тех. передачи
+└── .env                  # Настройки подключения (в .gitignore)
 ```
 
 ## Быстрый старт
-1. Настройте `.env` на основе примера.
-2. Подложите ключ в `secrets/google-service-account.json`.
-3. Запустите цикл загрузки:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt # Создайте его из pyproject.toml
-python3 get_headers.py
-python3 deploy_schema.py
-python3 fast_loader.py
+pip install -r requirements.txt
+python3 get_headers.py      # Собрать заголовки
+python3 deploy_schema.py    # Создать таблицы
+python3 fast_loader.py      # Загрузить данные
 ```
 
 ## Важные решения
-- **Full Refresh вместо CDC**: Для скорости MVP выбран метод полной перезаписи таблиц. Инкрементальная загрузка с хешами отложена.
-- **PgBouncer**: Для работы через пулер Supabase (порт 6543) используется `statement_cache_size=0`.
-- **Типы данных**: Все колонки импортированы как `text` для максимальной совместимости на этапе MVP.
+- **Full Refresh + Skip/Log**: Битые строки пропускаются, не блокируют загрузку.
+- **Два источника**: `_cur` (текущие) и `_hst` (исторические) — разные триггеры.
+- **legacy_id**: UUID из GAS для связи с CRM-приложением.
+- **PgBouncer**: Используется `statement_cache_size=0`.
+- **Типы данных**: Пока `text`, типизация на этапе трансформации.
 
 ## Известные проблемы
-- **PgBouncer**: Не поддерживает Prepared Statements, что требует явного отключения кеша в коде.
-- **Русские заголовки**: Нормализуются в нижний регистр, что может потребовать внимания при написании SQL-запросов.
+- **PgBouncer**: Не поддерживает Prepared Statements.
+- **Русские заголовки**: Нормализуются в нижний регистр.
+
+## Связь с CRM
+CRM-приложение (`pl_crm_from_gas`) читает данные из `public.*` таблиц.
+Схема БД определена в `pl_crm_from_gas/supabase/schema.sql` — это контракт.

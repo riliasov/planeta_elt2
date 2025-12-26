@@ -1,50 +1,65 @@
+"""Развертывание staging-таблиц в Supabase на основе заголовков из Google Sheets."""
 
 import json
 import asyncio
 import asyncpg
 import re
+import logging
 from dotenv import load_dotenv
 import os
 
 load_dotenv()
 
-def slugify(text):
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(levelname)s | %(name)s | %(message)s'
+)
+log = logging.getLogger('deploy_schema')
+
+
+def slugify(text: str) -> str:
+    """Преобразует текст заголовка в имя колонки (snake_case, русские буквы сохраняются)."""
     text = text.lower()
-    # Replace spaces and newlines with underscores
     text = re.sub(r'[\s\n]+', '_', text)
-    # Remove non-alphanumeric except underscores
-    # But since it's Russian, we might want to keep it or transliterate.
-    # The user rule says "Docstrings и логи — в одну строку на русском языке", 
-    # but for DB columns it's better to be safe.
-    # Let's keep Russian letters but remove other trash.
     text = re.sub(r'[^\w_]+', '', text)
     return text.strip('_')
 
+
 async def deploy():
-    with open('headers.json', 'r') as f:
+    """Создаёт staging-таблицы на основе headers.json."""
+    
+    # Загружаем заголовки
+    headers_path = 'headers.json'
+    if not os.path.exists(headers_path):
+        log.error(f"Файл {headers_path} не найден. Сначала запустите get_headers.py")
+        return
+    
+    with open(headers_path, 'r') as f:
         headers_map = json.load(f)
     
     dsn = os.getenv('SUPABASE_DB_URL')
     if not dsn:
-        print("Error: SUPABASE_DB_URL not found in .env")
+        log.error("SUPABASE_DB_URL не найден в .env")
         return
-        
+    
     conn = await asyncpg.connect(dsn, statement_cache_size=0)
+    created_tables = []
     
     try:
         for table_name, headers in headers_map.items():
-            if not headers: continue
+            if not headers:
+                log.warning(f"Пропускаем {table_name}: нет заголовков")
+                continue
             
-            # Special case for 'rates' which seems to have dates as headers in the sample
+            # Формируем колонки
             if table_name == 'rates':
-                # Simplified for rates: just text columns for now
-                cols = [f"col_{i} text" for i, _ in enumerate(headers)]
+                # Особый случай для rates — даты в заголовках
+                cols = [f'"col_{i}" text' for i, _ in enumerate(headers)]
             else:
                 cols = []
                 seen = set()
                 for h in headers:
-                    col_name = slugify(h)
-                    if not col_name: col_name = "unknown_col"
+                    col_name = slugify(h) or "unknown_col"
                     original_name = col_name
                     counter = 1
                     while col_name in seen:
@@ -53,16 +68,29 @@ async def deploy():
                     seen.add(col_name)
                     cols.append(f'"{col_name}" text')
             
-            # Add a meta column for the original row index or hash if needed later
+            # Служебные колонки для CDC и отладки
             cols.append('"_row_index" integer')
+            cols.append('"__row_hash" text')  # Для CDC
             cols.append('"_loaded_at" timestamp with time zone default now()')
             
+            # Создаём таблицу
             sql = f'DROP TABLE IF EXISTS "{table_name}"; CREATE TABLE "{table_name}" ({", ".join(cols)});'
-            print(f"Deploying table {table_name}...")
-            await conn.execute(sql)
             
+            log.info(f"Создаю таблицу {table_name} ({len(headers)} колонок)...")
+            await conn.execute(sql)
+            created_tables.append(table_name)
+        
+        log.info("=" * 50)
+        log.info(f"Создано таблиц: {len(created_tables)}")
+        for t in created_tables:
+            log.info(f"  - {t}")
+            
+    except Exception as e:
+        log.error(f"Ошибка при создании таблиц: {e}")
+        raise
     finally:
         await conn.close()
+
 
 if __name__ == "__main__":
     asyncio.run(deploy())
