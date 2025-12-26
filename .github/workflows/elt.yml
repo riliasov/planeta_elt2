@@ -1,0 +1,64 @@
+name: ELT Pipeline
+
+on:
+  # Запуск по расписанию (каждый день в 6:00 UTC = 10:00 MSK)
+  schedule:
+    - cron: '0 6 * * *'
+  
+  # Ручной запуск
+  workflow_dispatch:
+    inputs:
+      skip_load:
+        description: 'Пропустить загрузку из Sheets'
+        required: false
+        default: 'false'
+        type: boolean
+      transform_only:
+        description: 'Только трансформация'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      
+      - name: Create secrets directory
+        run: mkdir -p secrets
+      
+      - name: Setup Google credentials
+        run: echo '${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}' > secrets/google-service-account.json
+      
+      - name: Run ELT Pipeline
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ "${{ inputs.transform_only }}" == "true" ]; then
+            python run_pipeline.py --transform-only
+          elif [ "${{ inputs.skip_load }}" == "true" ]; then
+            python run_pipeline.py --skip-load
+          else
+            python run_pipeline.py
+          fi
+      
+      - name: Cleanup secrets
+        if: always()
+        run: rm -rf secrets/
