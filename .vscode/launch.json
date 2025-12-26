@@ -1,0 +1,29 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Fast Loader (Full Refresh)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/fast_loader.py",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "Python: Debug Connection",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/debug_system.py",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "Python: Deploy Schema",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/deploy_schema.py",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        }
+    ]
+}
