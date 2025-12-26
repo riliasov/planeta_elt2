@@ -1,0 +1,5 @@
+gspread
+asyncpg
+python-dotenv
+PyYAML
+google-auth

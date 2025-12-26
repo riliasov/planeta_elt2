@@ -1,0 +1,186 @@
+version: 4
+description: >
+  Конфигурация Google Sheets -> Supabase.
+  Единая стратегия sync: upsert + row_hash.
+  Хеши вычисляются в Python.
+  Автоматический monthly backfill отключён.
+  Первая строка каждого указанного range считается заголовком.
+
+defaults:
+  use_gid: true
+  header_row: first_in_range
+  timezone: "Asia/Yekaterinburg"
+
+  row_hash_algorithm: "md5"
+  compute_row_hash_in: "python"
+  write_row_hash_back: false
+  row_hash_column: "__row_hash"
+
+  change_detection_strategy: "hash"
+  enable_hard_delete: true
+
+  sync_default:
+    mode: upsert
+
+read_options:
+  prefer_cell_type_over_display: true
+  interpret_date_from_serial: true
+  strip_weekday_prefix: true
+  trim_strings: true
+
+date_parsing:
+  patterns_priority:
+    - "%d.%m.%Y"
+    - "%d.%m.%y"
+    - "%d.%m"
+    - "%m-%Y"
+    - "%Y-%m-%d %H:%M:%S"
+  time_patterns:
+    - "%H:%M"
+    - "%H:%M:%S"
+
+sync_options:
+  dry_run_default: true
+  batch_size: 1000
+  retry_attempts: 3
+  ignore_empty_rows: true
+
+spreadsheets:
+
+  "1kt8CeDDEpJuDLX6nsr2_ZxAl4L0jg9p83wqS0VEFFr0":
+    description: "Основная историческая таблица"
+    sheets:
+
+      - id: historical_sales
+        gid: "294381083"
+        description: "Продажи_hst"
+        range: "A1:R"
+        target_table: sales_hst
+        mode: upsert
+        pk: "__row_hash"
+        compute_row_hash: true
+        date_columns:
+          - sale_date
+
+      - id: clients_hst
+        gid: "1318679629"
+        description: "Клиент_hst"
+        range: "B4:W"
+        target_table: clients_hst
+        mode: upsert
+        pk: "__row_hash"
+        compute_row_hash: true
+        date_columns:
+          - created_at
+          - updated_at
+
+      - id: historical_expenses
+        gid: "678151176"
+        description: "Расходы_hst"
+        range: "A1:N"
+        target_table: expenses_hst
+        mode: upsert
+        pk: "__row_hash"
+        compute_row_hash: true
+        date_columns:
+          - expense_date
+
+      - id: rates
+        gid: "199220541"
+        description: "Ставки (справочник)"
+        range: "A1:S"
+        target_table: rates
+        mode: replace
+        compute_row_hash: false
+        date_columns:
+          - effective_from
+          - effective_to
+
+      - id: historical_trainings
+        gid: "1195769572"
+        description: "Тренировки_hst"
+        range: "A1:J"
+        target_table: trainings_hst
+        mode: upsert
+        pk: "__row_hash"
+        compute_row_hash: true
+        date_columns:
+          - training_date
+          - start_time
+
+  "1-kEt2r-mzqI6PmtFqcFaS7XVAPdlde5FxYMv4DXwd94":
+    description: "Текущие операционные таблицы (cur)"
+    sheets:
+
+      - id: clients_cur
+        gid: "389044927"
+        description: "Клиент_cur"
+        range: "A2:V"
+        target_table: clients_cur
+        mode: upsert
+        pk: "__row_hash"
+        compute_row_hash: true
+        date_columns:
+          - updated_at
+
+      - id: current_sales
+        gid: "623132210"
+        description: "Продажи_cur"
+        range: "A2:T"
+        target_table: sales_cur
+        mode: upsert
+        pk: "__row_hash"
+        compute_row_hash: true
+        date_columns:
+          - sale_date
+          - created_at
+
+      - id: current_trainings
+        gid: "1856560934"
+        description: "Тренировки_cur"
+        range: "A1:J"
+        target_table: trainings_cur
+        mode: upsert
+        pk: "__row_hash"
+        compute_row_hash: true
+        date_columns:
+          - training_date
+          - start_time
+
+  "1VxLw1ivJ4u2fU1MJOXwdABvsGE7VhegeLBSBT2qzbuo":
+    description: "Текущие расходы"
+    sheets:
+      - id: current_expenses
+        gid: "2069388990"
+        description: "Расходы_cur"
+        range: "A2:N"
+        target_table: expenses_cur
+        mode: upsert
+        pk: "__row_hash"
+        compute_row_hash: true
+        date_columns:
+          - expense_date
+
+  "1kYEefSBzxuGGFMoT2v-t0vWlGb7liERE8R_KEyFuNtc":
+    description: "Справочники и reference-данные"
+    sheets:
+      - id: references
+        gid: "1546502281"
+        description: "Спр_Прайс"
+        range: "A1:I40"
+        target_table: price_reference
+        mode: replace
+        compute_row_hash: false
+        date_columns: []
+
+helpers:
+  python_hashing:
+    recommended: true
+    behavior:
+      - compute_row_hash_locally: true
+      - compare_hash_sets: true
+      - hard_delete_by_hash_difference: true
+
+manual_backfill:
+  enabled: false
+  note: "Автоматический monthly backfill отключён. Ручной перенос выполняется оператором."

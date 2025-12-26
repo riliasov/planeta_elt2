@@ -1,0 +1,37 @@
+[project]
+name = "planeta_elt2"
+version = "0.1.0"
+description = "CDC+ELT system for Google Sheets to Supabase"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "sqlalchemy>=2.0.23",
+    "alembic>=1.12.1",
+    "asyncpg>=0.29.0",
+    "pydantic-settings>=2.1.0",
+    "gspread>=6.0.0",
+    "google-auth>=2.23.0",
+    "structlog>=23.2.0",
+    "python-dotenv>=1.0.0",
+    "greenlet>=3.0.1", # Required for SQLAlchemy async
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "black>=23.11.0",
+    "isort>=5.12.0",
+    "mypy>=1.7.0",
+]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+
+[tool.isort]
+profile = "black"
