@@ -28,61 +28,48 @@
 --- AGENT-MAY-EDIT-BELOW ---
 
 ## Цель проекта
-Синхронизация данных из Google Sheets в Supabase PostgreSQL для использования в Web App (pl_crm_from_gas).
+Синхронизация данных из Google Sheets в Supabase PostgreSQL для CRM (pl_crm_from_gas).
 
-## Текущий статус: ФАЗА 1 ЗАВЕРШЕНА ✅
-- [x] Автоматическая генерация схемы БД на основе Google Sheets.
-- [x] Быстрая загрузка данных (Full Refresh) с skip + log для битых строк.
-- [x] Асинхронное подключение к Supabase (PgBouncer compatible).
-- [x] Документация источников данных (_cur vs _hst).
-- [x] CDC-логика (hash-сравнение) — модуль src/cdc.py.
-- [x] Трансформация staging → public — transform_to_public.py.
-- [x] Главный скрипт пайплайна — run_pipeline.py.
+## Текущий статус: ПОЛНОСТЬЮ ГОТОВ ✅
+- [x] Full Refresh загрузка с skip + log
+- [x] CDC (инкрементальная загрузка) — **по умолчанию**
+- [x] Трансформация staging → public
+- [x] GitHub Actions Scheduler (ежедневно)
+- [x] 15 unit-тестов для CDC
 
 ## Ключевые зависимости
 - Python 3.11+
-- gspread — работа с Google Sheets API
-- asyncpg — высокопроизводительный асинхронный драйвер PostgreSQL
-- python-dotenv — управление переменными окружения
-- PyYAML — чтение конфигурации источников
+- gspread, asyncpg, pyyaml, python-dotenv
 
 ## Структура проекта
 ```text
 planeta_elt2/
-├── src/                  # Исходный код (модули)
+├── src/cdc.py            # Модуль CDC (хеширование)
+├── cdc_loader.py         # Инкрементальная загрузка
+├── fast_loader.py        # Full Refresh
+├── transform_to_public.py # Трансформация
+├── run_pipeline.py       # Главный скрипт
+├── .github/workflows/    # GitHub Actions
 ├── docs/                 # Документация
-│   └── DATA_SOURCES.md   # Описание _cur vs _hst
-├── secrets/              # JSON ключи (в .gitignore)
-├── get_headers.py        # Сбор заголовков из Sheets
-├── deploy_schema.py      # Развертывание таблиц в Supabase
-├── fast_loader.py        # Full Refresh с skip + log
-├── check_db.py           # Утилита проверки данных в БД
-├── sources.yml           # Конфигурация листов и таблиц
-├── HANDOVER.md           # Инструкция для тех. передачи
-└── .env                  # Настройки подключения (в .gitignore)
+├── tests/                # Unit-тесты
+└── sources.yml           # Конфигурация
 ```
 
-## Быстрый старт
+## Использование
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python3 get_headers.py      # Собрать заголовки
-python3 deploy_schema.py    # Создать таблицы
-python3 fast_loader.py      # Загрузить данные
+# CDC режим (по умолчанию)
+python run_pipeline.py
+
+# Full Refresh (первичная загрузка)
+python run_pipeline.py --full-refresh
+
+# Только трансформация
+python run_pipeline.py --transform-only
 ```
 
-## Важные решения
-- **Full Refresh + Skip/Log**: Битые строки пропускаются, не блокируют загрузку.
-- **Два источника**: `_cur` (текущие) и `_hst` (исторические) — разные триггеры.
-- **legacy_id**: UUID из GAS для связи с CRM-приложением.
-- **PgBouncer**: Используется `statement_cache_size=0`.
-- **Типы данных**: Пока `text`, типизация на этапе трансформации.
-
-## Известные проблемы
-- **PgBouncer**: Не поддерживает Prepared Statements.
-- **Русские заголовки**: Нормализуются в нижний регистр.
+## Scheduler
+GitHub Actions запускает пайплайн ежедневно в 6:00 UTC.
+Документация: [docs/SCHEDULER.md](docs/SCHEDULER.md)
 
 ## Связь с CRM
-CRM-приложение (`pl_crm_from_gas`) читает данные из `public.*` таблиц.
-Схема БД определена в `pl_crm_from_gas/supabase/schema.sql` — это контракт.
+Схема: `pl_crm_from_gas/supabase/schema.sql`

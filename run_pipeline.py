@@ -76,14 +76,14 @@ def main():
                         help='Пропустить трансформацию')
     parser.add_argument('--transform-only', action='store_true',
                         help='Только трансформация (без загрузки)')
-    parser.add_argument('--cdc', action='store_true',
-                        help='Использовать CDC (инкрементальная загрузка) вместо Full Refresh')
+    parser.add_argument('--full-refresh', action='store_true',
+                        help='Full Refresh (TRUNCATE + INSERT) вместо CDC')
     
     args = parser.parse_args()
     
     skip_load = args.skip_load or args.transform_only
     skip_transform = args.skip_transform
-    use_cdc = args.cdc
+    use_cdc = not args.full_refresh  # CDC по умолчанию
     
     success = asyncio.run(run_pipeline(skip_load=skip_load, skip_transform=skip_transform, use_cdc=use_cdc))
     
