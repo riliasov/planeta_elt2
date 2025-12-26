@@ -13,23 +13,27 @@ logging.basicConfig(
 log = logging.getLogger('pipeline')
 
 
-async def run_pipeline(skip_load: bool = False, skip_transform: bool = False):
+async def run_pipeline(skip_load: bool = False, skip_transform: bool = False, use_cdc: bool = False):
     """Запуск полного ELT-пайплайна."""
     
     start_time = datetime.now()
+    mode = "CDC" if use_cdc else "FULL REFRESH"
     log.info("=" * 60)
-    log.info(f"ЗАПУСК ELT PIPELINE: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    log.info(f"ЗАПУСК ELT PIPELINE ({mode}): {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
     log.info("=" * 60)
     
     # Этап 1: Загрузка из Sheets в staging
     if not skip_load:
         log.info("")
-        log.info("ЭТАП 1: Загрузка данных из Google Sheets")
+        log.info(f"ЭТАП 1: Загрузка данных ({mode})")
         log.info("-" * 40)
         try:
-            # Импортируем здесь, чтобы не грузить модули если skip_load
-            from fast_loader import load_data
-            await load_data()
+            if use_cdc:
+                from cdc_loader import load_with_cdc
+                await load_with_cdc()
+            else:
+                from fast_loader import load_data
+                await load_data()
             log.info("✓ Загрузка завершена")
         except Exception as e:
             log.error(f"✗ Ошибка загрузки: {e}")
@@ -72,16 +76,20 @@ def main():
                         help='Пропустить трансформацию')
     parser.add_argument('--transform-only', action='store_true',
                         help='Только трансформация (без загрузки)')
+    parser.add_argument('--cdc', action='store_true',
+                        help='Использовать CDC (инкрементальная загрузка) вместо Full Refresh')
     
     args = parser.parse_args()
     
     skip_load = args.skip_load or args.transform_only
     skip_transform = args.skip_transform
+    use_cdc = args.cdc
     
-    success = asyncio.run(run_pipeline(skip_load=skip_load, skip_transform=skip_transform))
+    success = asyncio.run(run_pipeline(skip_load=skip_load, skip_transform=skip_transform, use_cdc=use_cdc))
     
     sys.exit(0 if success else 1)
 
 
 if __name__ == "__main__":
     main()
+
