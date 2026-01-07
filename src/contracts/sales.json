@@ -1,0 +1,58 @@
+{
+    "entity": "Sales",
+    "description": "Реестр продаж товаров и услуг.",
+    "columns": [
+        {
+            "name": "дата",
+            "type": "date",
+            "format": "DD.MM.YY",
+            "required": true,
+            "description": "Дата продажи"
+        },
+        {
+            "name": "клиент",
+            "type": "string",
+            "required": true,
+            "description": "ФИО покупателя (ссылка на Clients)"
+        },
+        {
+            "name": "продукт",
+            "type": "string",
+            "required": true,
+            "description": "Наименование товара/услуги"
+        },
+        {
+            "name": "количество",
+            "type": "integer",
+            "required": false,
+            "default": 1
+        },
+        {
+            "name": "полная_стоимость",
+            "type": "money",
+            "required": false
+        },
+        {
+            "name": "итого",
+            "type": "money",
+            "required": false,
+            "description": "Фактическая сумма оплаты"
+        },
+        {
+            "name": "тип",
+            "type": "string",
+            "required": false
+        },
+        {
+            "name": "категория",
+            "type": "string",
+            "required": false
+        }
+    ],
+    "unique_keys": [
+        "дата",
+        "клиент",
+        "продукт",
+        "полная_стоимость"
+    ]
+}

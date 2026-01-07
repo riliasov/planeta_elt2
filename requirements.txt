@@ -3,3 +3,5 @@ asyncpg
 python-dotenv
 PyYAML
 google-auth
+pydantic-settings
+pydantic-settings

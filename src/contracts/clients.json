@@ -1,0 +1,40 @@
+{
+    "entity": "Clients",
+    "description": "База клиентов центра.",
+    "columns": [
+        {
+            "name": "клиент",
+            "type": "string",
+            "required": true,
+            "description": "ФИО клиента"
+        },
+        {
+            "name": "мобильный",
+            "type": "string",
+            "required": false,
+            "description": "Номер телефона"
+        },
+        {
+            "name": "имя_ребенка",
+            "type": "string",
+            "required": false,
+            "description": "Имя ребенка"
+        },
+        {
+            "name": "дата_рождения_ребенка",
+            "type": "date",
+            "format": "DD.MM.YYYY",
+            "required": false
+        },
+        {
+            "name": "тип",
+            "type": "string",
+            "required": false,
+            "description": "Тип занятий (Бассейн/Зал)"
+        }
+    ],
+    "unique_keys": [
+        "клиент",
+        "мобильный"
+    ]
+}

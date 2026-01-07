@@ -1,0 +1,59 @@
+{
+    "entity": "Schedule",
+    "description": "Расписание занятий.",
+    "columns": [
+        {
+            "name": "дата",
+            "type": "date",
+            "format": [
+                "DD.MM.",
+                "DD.MM.YY"
+            ],
+            "required": true
+        },
+        {
+            "name": "начало",
+            "type": "time",
+            "required": true,
+            "default": "09:00"
+        },
+        {
+            "name": "конец",
+            "type": "time",
+            "required": true,
+            "default": "09:30"
+        },
+        {
+            "name": "клиент",
+            "type": "string",
+            "required": true,
+            "description": "ФИО клиента"
+        },
+        {
+            "name": "статус",
+            "type": "string",
+            "required": true,
+            "default": "Свободно"
+        },
+        {
+            "name": "тип",
+            "type": "string",
+            "required": false
+        },
+        {
+            "name": "категория",
+            "type": "string",
+            "required": false
+        },
+        {
+            "name": "комментарий",
+            "type": "string",
+            "required": false
+        }
+    ],
+    "unique_keys": [
+        "дата",
+        "начало",
+        "клиент"
+    ]
+}

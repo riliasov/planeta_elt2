@@ -1,3 +1,3 @@
-from .models import Base
+from .connection import DBConnection
 
-__all__ = ["Base"]
+__all__ = ["DBConnection"]
