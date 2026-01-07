@@ -23,7 +23,10 @@
         {
             "name": "дата_рождения_ребенка",
             "type": "date",
-            "format": "DD.MM.YYYY",
+            "format": [
+                "DD.MM.YYYY",
+                "DD.MM.YY"
+            ],
             "required": false
         },
         {

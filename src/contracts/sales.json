@@ -5,7 +5,11 @@
         {
             "name": "дата",
             "type": "date",
-            "format": "DD.MM.YY",
+            "format": [
+                "DD.MM.YY",
+                "DD.MM.YYYY",
+                "YYYY-MM-DD"
+            ],
             "required": true,
             "description": "Дата продажи"
         },

@@ -42,6 +42,7 @@ class ContractValidator:
         'DD.MM.YYYY': r'^\d{2}\.\d{2}\.\d{4}$',
         'DD.MM.YY': r'^\d{2}\.\d{2}\.\d{2}$',
         'DD.MM.': r'^\d{2}\.\d{2}\.$',
+        'DD.MM': r'^\d{2}\.\d{2}$',
         'YYYY-MM-DD': r'^\d{4}-\d{2}-\d{2}$',
     }
     

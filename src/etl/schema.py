@@ -11,6 +11,26 @@ class SchemaManager:
     def __init__(self):
         self.extractor = GSheetsExtractor()
 
+    async def deploy_meta_tables(self):
+        """Создает системные таблицы (logs и т.д.)."""
+        ddl = """
+        CREATE TABLE IF NOT EXISTS validation_logs (
+            id BIGSERIAL PRIMARY KEY,
+            run_id UUID NOT NULL,
+            table_name TEXT NOT NULL,
+            row_index INTEGER NOT NULL,
+            column_name TEXT,
+            invalid_value TEXT,
+            error_type TEXT NOT NULL,
+            message TEXT NOT NULL,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_validation_logs_run_id ON validation_logs(run_id);
+        """
+        log.info("Deploying meta tables...")
+        await DBConnection.execute(ddl)
+        log.info("Meta tables deployed.")
+
     async def deploy_staging_tables(self):
         """Пересоздает staging таблицы на основе заголовков из Sheets."""
         config = settings.sources

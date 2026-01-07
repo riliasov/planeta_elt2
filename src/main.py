@@ -24,6 +24,7 @@ async def main():
         if args.deploy_schema:
             from src.etl.schema import SchemaManager
             manager = SchemaManager()
+            await manager.deploy_meta_tables()
             await manager.deploy_staging_tables()
             # If we deployed schema, we likely want to load data too, unless skipped
             if not skip_load:

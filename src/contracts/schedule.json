@@ -7,7 +7,9 @@
             "type": "date",
             "format": [
                 "DD.MM.",
-                "DD.MM.YY"
+                "DD.MM",
+                "DD.MM.YY",
+                "DD.MM.YYYY"
             ],
             "required": true
         },
@@ -26,7 +28,7 @@
         {
             "name": "клиент",
             "type": "string",
-            "required": true,
+            "required": false,
             "description": "ФИО клиента"
         },
         {

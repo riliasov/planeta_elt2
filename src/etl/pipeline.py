@@ -1,10 +1,13 @@
 import logging
 import time
-from typing import Optional
+import uuid
+from typing import Optional, List, Dict, Any
 from src.config.settings import settings
 from src.etl.extractor import GSheetsExtractor
 from src.etl.loader import DataLoader
 from src.etl.transformer import Transformer
+from src.etl.validator import ContractValidator, ValidationResult
+from src.db.connection import DBConnection
 
 log = logging.getLogger('pipeline')
 
@@ -13,6 +16,8 @@ class ELTPipeline:
         self.extractor = GSheetsExtractor()
         self.loader = DataLoader()
         self.transformer = Transformer()
+        self.validator = ContractValidator()
+        self.run_id = uuid.uuid4()
 
     async def run(self, 
                   skip_load: bool = False, 
@@ -20,12 +25,9 @@ class ELTPipeline:
                   full_refresh: bool = False):
         """
         Запуск ETL пайплайна.
-        :param skip_load: Пропустить этап загрузки (только трансформация)
-        :param skip_transform: Пропустить этап трансформации
-        :param full_refresh: Использовать Full Refresh вместо CDC
         """
         start_time = time.time()
-        log.info("=== Starting ELT Pipeline ===")
+        log.info(f"=== Starting ELT Pipeline (Run ID: {self.run_id}) ===")
         
         if not skip_load:
             await self._run_load_phase(full_refresh)
@@ -55,8 +57,11 @@ class ELTPipeline:
                 range_name = sheet_cfg.get('range', 'A:Z')
                 mode = sheet_cfg.get('mode', 'upsert')
                 
-                # Если в конфиге явно сказано replace, то всегда Full Refresh для этой таблицы
-                # Или если передан глобальный флаг full_refresh
+                # Маппинг таблицы на имя контракта
+                contract_name = target_table.replace('_cur', '').replace('_hst', '')
+                if contract_name == 'trainings':
+                    contract_name = 'schedule'
+                
                 is_full_refresh = full_refresh or (mode == 'replace')
                 
                 try:
@@ -68,7 +73,19 @@ class ELTPipeline:
                     if not rows:
                         continue
                         
-                    # 2. Load
+                    # 2. Validate
+                    log.info(f"Validating {target_table} using contract '{contract_name}'...")
+                    # Преобразуем список строк (списки) в список словарей для валидатора
+                    dict_rows = [dict(zip(col_names, row)) for row in rows]
+                    val_result = self.validator.validate_dataset(dict_rows, contract_name)
+                    
+                    if not val_result.is_valid:
+                        log.warning(f"⚠ {target_table}: detected {len(val_result.errors)} validation errors")
+                        await self._log_validation_errors(target_table, val_result)
+                    else:
+                        log.info(f"✓ {target_table}: all rows are valid")
+
+                    # 3. Load (загружаем всё, валидация только логирует ошибки)
                     if is_full_refresh:
                         await self.loader.load_full_refresh(target_table, col_names, rows)
                     else:
@@ -76,6 +93,34 @@ class ELTPipeline:
                         
                 except Exception as e:
                     log.error(f"Failed to process {target_table}: {e}")
+
+    async def _log_validation_errors(self, table_name: str, result: ValidationResult):
+        """Записывает ошибки валидации в БД."""
+        query = """
+            INSERT INTO validation_logs (
+                run_id, table_name, row_index, column_name, 
+                invalid_value, error_type, message
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        """
+        params = [
+            (
+                str(self.run_id),
+                table_name,
+                err.row_index,
+                err.column,
+                str(err.value)[:255] if err.value is not None else None,
+                err.error_type,
+                err.message
+            )
+            for err in result.errors
+        ]
+        
+        try:
+            async with await DBConnection.get_connection() as conn:
+                await conn.executemany(query, params)
+            log.info(f"Logged {len(params)} errors to validation_logs")
+        except Exception as e:
+            log.error(f"Failed to log validation errors: {e}")
 
     async def _run_transform_phase(self):
         log.info("Starting Transform Phase")

@@ -104,14 +104,21 @@ class DataLoader:
         return cdc_stats
 
     async def _fetch_existing_hashes(self, table: str) -> Dict[str, str]:
-        """Загружает map: legacy_id -> __row_hash."""
-        query = f'SELECT legacy_id, __row_hash FROM "{table}" WHERE legacy_id IS NOT NULL'
+        # В staging таблицах идентификатор - 'pk' или '_row_index'
+        # Пытаемся найти один из них
+        query = f'SELECT pk, __row_hash FROM "{table}" WHERE pk IS NOT NULL'
         try:
              rows = await DBConnection.fetch(query)
-             return {row['legacy_id']: row['__row_hash'] for row in rows if row['__row_hash']}
-        except Exception as e:
-            log.warning(f"Could not fetch hashes for {table} (maybe first run?): {e}")
-            return {}
+             return {str(row['pk']): row['__row_hash'] for row in rows if row['__row_hash']}
+        except Exception:
+            # Fallback к _row_index если pk нет
+            query = f'SELECT _row_index::text as id, __row_hash FROM "{table}"'
+            try:
+                rows = await DBConnection.fetch(query)
+                return {row['id']: row['__row_hash'] for row in rows if row['__row_hash']}
+            except Exception as e:
+                log.warning(f"Could not fetch hashes for {table} (maybe first run?): {e}")
+                return {}
 
     async def _apply_cdc_changes(self, table: str, processor: CDCProcessor, col_names: List[str]):
         """Выполняет INSERT/UPDATE запросы."""
