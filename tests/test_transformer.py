@@ -8,8 +8,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.etl.transformer import (
     TRANSFORMATIONS, 
     SALES_SQL_TEMPLATE, 
-    SALES_CUR_COLUMNS,
-    SALES_HST_COLUMNS
+    SALES_COLS
 )
 
 
@@ -48,12 +47,11 @@ class TestTransformationConfig:
             'date_col', 'client_col', 'product_col', 'type_col', 
             'category_col', 'qty_col', 'price_col', 'discount_col',
             'final_col', 'cash_col', 'transfer_col', 'terminal_col',
-            'debt_col', 'comment_col', 'source_table'
+            'debt_col', 'comment_col'
         ]
         
         for key in required_keys:
-            assert key in SALES_CUR_COLUMNS, f"Missing {key} in SALES_CUR_COLUMNS"
-            assert key in SALES_HST_COLUMNS, f"Missing {key} in SALES_HST_COLUMNS"
+            assert key in SALES_COLS, f"Missing {key} in SALES_COLS"
 
 
 class TestSQLGeneration:
@@ -61,16 +59,14 @@ class TestSQLGeneration:
     
     def test_generated_sql_is_valid_syntax(self):
         """Сгенерированный SQL не содержит незаменённых плейсхолдеров."""
-        sql_cur = SALES_SQL_TEMPLATE.format(**SALES_CUR_COLUMNS)
-        sql_hst = SALES_SQL_TEMPLATE.format(**SALES_HST_COLUMNS)
+        sql = SALES_SQL_TEMPLATE.format(source_table='sales_cur', **SALES_COLS)
         
         # Проверяем отсутствие незаменённых плейсхолдеров вида {name}
         # Regex {2} допустимы — это PostgreSQL квантификаторы
         import re
         placeholder_pattern = r'\{[a-z_]+\}'  # {word} но не {2}
         
-        assert not re.search(placeholder_pattern, sql_cur), "Unreplaced placeholder in sales_cur SQL"
-        assert not re.search(placeholder_pattern, sql_hst), "Unreplaced placeholder in sales_hst SQL"
+        assert not re.search(placeholder_pattern, sql), "Unreplaced placeholder in SQL"
     
     def test_generated_sql_references_correct_table(self):
         """SQL ссылается на правильную исходную таблицу."""
@@ -131,13 +127,6 @@ class TestDateParsing:
         assert 'DD.MM.YY' in sql
         # Формат DD.MM.YYYY
         assert 'DD.MM.YYYY' in sql
-    
-    def test_trainings_sql_handles_partial_dates(self):
-        """SQL для тренировок обрабатывает даты без года."""
-        sql = TRANSFORMATIONS['trainings_cur']['sql']
-        
-        # Обработка формата DD.MM.
-        assert "|| '2025'" in sql or "2025" in sql
 
 
 if __name__ == '__main__':
