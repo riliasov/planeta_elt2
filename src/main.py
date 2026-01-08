@@ -14,6 +14,7 @@ async def main():
     parser.add_argument('--transform-only', action='store_true', help='Alias for --skip-load')
     parser.add_argument('--full-refresh', action='store_true', help='Force full refresh (truncate+insert)')
     parser.add_argument('--deploy-schema', action='store_true', help='Recreate staging tables schema from Sheets headers')
+    parser.add_argument('--dry-run', action='store_true', help='Show changes without applying them')
     
     args = parser.parse_args()
     
@@ -35,7 +36,8 @@ async def main():
         await pipeline.run(
             skip_load=skip_load,
             skip_transform=args.skip_transform,
-            full_refresh=args.full_refresh
+            full_refresh=args.full_refresh,
+            dry_run=args.dry_run
         )
     except Exception as e:
         log.critical(f"Pipeline failed: {e}", exc_info=True)

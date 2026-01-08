@@ -103,6 +103,41 @@ class DataLoader:
         
         return cdc_stats
 
+    async def calculate_changes(self, table: str, col_names: List[str], rows: List[List[Any]]) -> Dict[str, int]:
+        """Вычисляет статистику изменений без применения (для dry-run)."""
+        log.info(f"DRY-RUN: Calculating changes for {table} ({len(rows)} rows from source)")
+        
+        # Получаем текущие хеши из БД
+        existing_hashes = await self._fetch_existing_hashes(table)
+        processor = CDCProcessor(existing_hashes)
+        
+        # Обрабатываем строки для подсчёта статистики
+        for idx, r in enumerate(rows):
+            row_num = idx + 2
+            try:
+                full_row = list(r) + [None] * (len(col_names) - len(r))
+                full_row = full_row[:len(col_names)]
+                full_row_str = [str(val) if val not in (None, '') else None for val in full_row]
+                
+                row_hash = compute_row_hash(full_row_str)
+                
+                pk_val = None
+                if 'pk' in col_names:
+                    pk_idx = col_names.index('pk')
+                    pk_val = full_row_str[pk_idx]
+                
+                if not pk_val:
+                    continue
+
+                row_data = {col: val for col, val in zip(col_names, full_row_str)}
+                processor.process_row(pk_val, row_hash, row_data)
+                
+            except Exception as e:
+                log.warning(f"Error processing row {row_num} for dry-run: {e}")
+
+        processor.finalize()
+        return processor.get_stats()
+
     async def _fetch_existing_hashes(self, table: str) -> Dict[str, str]:
         # В staging таблицах идентификатор - 'pk' или '_row_index'
         # Пытаемся найти один из них

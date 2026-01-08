@@ -30,8 +30,17 @@ class ELTPipeline:
     async def run(self, 
                   skip_load: bool = False, 
                   skip_transform: bool = False, 
-                  full_refresh: bool = False):
-        """Запуск ETL пайплайна."""
+                  full_refresh: bool = False,
+                  dry_run: bool = False):
+        """Запуск ETL пайплайна.
+        
+        Args:
+            skip_load: Пропустить фазу загрузки
+            skip_transform: Пропустить фазу трансформации  
+            full_refresh: Полная перезагрузка (TRUNCATE + INSERT)
+            dry_run: Показать изменения без применения
+        """
+        self.dry_run = dry_run
         start_time = time.time()
         mode = 'full_refresh' if full_refresh else 'cdc'
         error_message = None
@@ -127,7 +136,9 @@ class ELTPipeline:
             log.warning(f"Failed to log table stats for {table_name}: {e}")
 
     async def _run_load_phase(self, full_refresh: bool):
-        log.info(f"Starting Load Phase (Mode: {'Full Refresh' if full_refresh else 'CDC'})")
+        dry_run_mode = getattr(self, 'dry_run', False)
+        mode_str = 'DRY-RUN ' if dry_run_mode else ''
+        log.info(f"Starting {mode_str}Load Phase (Mode: {'Full Refresh' if full_refresh else 'CDC'})")
         
         config = settings.sources
         if not config:
@@ -166,12 +177,21 @@ class ELTPipeline:
                     if not val_result.is_valid:
                         validation_errors = len(val_result.errors)
                         log.warning(f"⚠ {target_table}: detected {validation_errors} validation errors")
-                        await self._log_validation_errors(target_table, val_result)
+                        if not dry_run_mode:
+                            await self._log_validation_errors(target_table, val_result)
                     else:
                         log.info(f"✓ {target_table}: all rows are valid")
 
-                    # 3. Load
-                    if is_full_refresh:
+                    # 3. Load (или только показать статистику в dry-run)
+                    if dry_run_mode:
+                        # В dry-run режиме только вычисляем статистику без применения
+                        load_stats = await self.loader.calculate_changes(target_table, col_names, rows)
+                        log.info(f"🔍 DRY-RUN {target_table}: "
+                                f"would insert={load_stats.get('insert', 0)}, "
+                                f"update={load_stats.get('update', 0)}, "
+                                f"delete={load_stats.get('delete', 0)}, "
+                                f"unchanged={load_stats.get('unchanged', 0)}")
+                    elif is_full_refresh:
                         load_stats = await self.loader.load_full_refresh(target_table, col_names, rows)
                     else:
                         load_stats = await self.loader.load_cdc(target_table, col_names, rows)
@@ -184,9 +204,10 @@ class ELTPipeline:
                     self._run_stats['total_rows_synced'] += load_stats.get('inserted', 0) + load_stats.get('updated', 0)
                     self._run_stats['validation_errors'] += validation_errors
                     
-                    # Логируем статистику таблицы
-                    duration_ms = int((time.time() - table_start) * 1000)
-                    await self._log_table_stats(target_table, load_stats, validation_errors, duration_ms)
+                    # Логируем статистику таблицы (если не dry-run)
+                    if not dry_run_mode:
+                        duration_ms = int((time.time() - table_start) * 1000)
+                        await self._log_table_stats(target_table, load_stats, validation_errors, duration_ms)
                         
                 except Exception as e:
                     log.error(f"Failed to process {target_table}: {e}")
