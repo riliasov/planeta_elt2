@@ -11,36 +11,120 @@ from src.db.connection import DBConnection
 
 log = logging.getLogger('pipeline')
 
+
 class ELTPipeline:
+    """Оркестратор ELT пайплайна с сохранением метрик."""
+    
     def __init__(self):
         self.extractor = GSheetsExtractor()
         self.loader = DataLoader()
         self.transformer = Transformer()
         self.validator = ContractValidator()
         self.run_id = uuid.uuid4()
+        self._run_stats = {
+            'tables_processed': 0,
+            'total_rows_synced': 0,
+            'validation_errors': 0
+        }
 
     async def run(self, 
                   skip_load: bool = False, 
                   skip_transform: bool = False, 
                   full_refresh: bool = False):
-        """
-        Запуск ETL пайплайна.
-        """
+        """Запуск ETL пайплайна."""
         start_time = time.time()
+        mode = 'full_refresh' if full_refresh else 'cdc'
+        error_message = None
+        
         log.info(f"=== Starting ELT Pipeline (Run ID: {self.run_id}) ===")
         
-        if not skip_load:
-            await self._run_load_phase(full_refresh)
-        else:
-            log.info("Skipping Load Phase")
+        # Регистрируем начало run
+        await self._start_run(mode)
+        
+        try:
+            if not skip_load:
+                await self._run_load_phase(full_refresh)
+            else:
+                log.info("Skipping Load Phase")
 
-        if not skip_transform:
-            await self._run_transform_phase()
-        else:
-            log.info("Skipping Transform Phase")
+            if not skip_transform:
+                await self._run_transform_phase()
+            else:
+                log.info("Skipping Transform Phase")
+                
+            status = 'success'
+        except Exception as e:
+            status = 'failed'
+            error_message = str(e)
+            log.critical(f"Pipeline failed: {e}", exc_info=True)
+            raise
+        finally:
+            duration = time.time() - start_time
+            await self._finish_run(status, duration, error_message)
+            log.info(f"=== Pipeline Finished in {duration:.2f}s (status: {status}) ===")
 
-        duration = time.time() - start_time
-        log.info(f"=== Pipeline Finished in {duration:.2f}s ===")
+    async def _start_run(self, mode: str):
+        """Регистрирует начало run в elt_runs."""
+        query = """
+            INSERT INTO elt_runs (run_id, mode, status)
+            VALUES ($1, $2, 'running')
+        """
+        try:
+            await DBConnection.execute(query, str(self.run_id), mode)
+        except Exception as e:
+            log.warning(f"Failed to register run start: {e}")
+
+    async def _finish_run(self, status: str, duration: float, error_message: Optional[str] = None):
+        """Обновляет elt_runs с результатами run."""
+        query = """
+            UPDATE elt_runs SET
+                finished_at = NOW(),
+                status = $2,
+                duration_seconds = $3,
+                tables_processed = $4,
+                total_rows_synced = $5,
+                validation_errors = $6,
+                error_message = $7
+            WHERE run_id = $1
+        """
+        try:
+            await DBConnection.execute(
+                query,
+                str(self.run_id),
+                status,
+                round(duration, 2),
+                self._run_stats['tables_processed'],
+                self._run_stats['total_rows_synced'],
+                self._run_stats['validation_errors'],
+                error_message
+            )
+        except Exception as e:
+            log.warning(f"Failed to update run finish: {e}")
+
+    async def _log_table_stats(self, table_name: str, stats: Dict[str, int], 
+                                validation_errors: int, duration_ms: int):
+        """Сохраняет статистику по таблице в elt_table_stats."""
+        query = """
+            INSERT INTO elt_table_stats (
+                run_id, table_name, rows_extracted, rows_inserted, 
+                rows_updated, rows_deleted, rows_unchanged, validation_errors, duration_ms
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        """
+        try:
+            await DBConnection.execute(
+                query,
+                str(self.run_id),
+                table_name,
+                stats.get('extracted', 0),
+                stats.get('inserted', 0),
+                stats.get('updated', 0),
+                stats.get('deleted', 0),
+                stats.get('unchanged', 0),
+                validation_errors,
+                duration_ms
+            )
+        except Exception as e:
+            log.warning(f"Failed to log table stats for {table_name}: {e}")
 
     async def _run_load_phase(self, full_refresh: bool):
         log.info(f"Starting Load Phase (Mode: {'Full Refresh' if full_refresh else 'CDC'})")
@@ -57,12 +141,13 @@ class ELTPipeline:
                 range_name = sheet_cfg.get('range', 'A:Z')
                 mode = sheet_cfg.get('mode', 'upsert')
                 
-                # Маппинг таблицы на имя контракта
                 contract_name = target_table.replace('_cur', '').replace('_hst', '')
                 if contract_name == 'trainings':
                     contract_name = 'schedule'
                 
                 is_full_refresh = full_refresh or (mode == 'replace')
+                table_start = time.time()
+                validation_errors = 0
                 
                 try:
                     # 1. Extract
@@ -75,21 +160,33 @@ class ELTPipeline:
                         
                     # 2. Validate
                     log.info(f"Validating {target_table} using contract '{contract_name}'...")
-                    # Преобразуем список строк (списки) в список словарей для валидатора
                     dict_rows = [dict(zip(col_names, row)) for row in rows]
                     val_result = self.validator.validate_dataset(dict_rows, contract_name)
                     
                     if not val_result.is_valid:
-                        log.warning(f"⚠ {target_table}: detected {len(val_result.errors)} validation errors")
+                        validation_errors = len(val_result.errors)
+                        log.warning(f"⚠ {target_table}: detected {validation_errors} validation errors")
                         await self._log_validation_errors(target_table, val_result)
                     else:
                         log.info(f"✓ {target_table}: all rows are valid")
 
-                    # 3. Load (загружаем всё, валидация только логирует ошибки)
+                    # 3. Load
                     if is_full_refresh:
-                        await self.loader.load_full_refresh(target_table, col_names, rows)
+                        load_stats = await self.loader.load_full_refresh(target_table, col_names, rows)
                     else:
-                        await self.loader.load_cdc(target_table, col_names, rows)
+                        load_stats = await self.loader.load_cdc(target_table, col_names, rows)
+                    
+                    # Добавляем extracted count
+                    load_stats['extracted'] = len(rows)
+                    
+                    # Обновляем общую статистику
+                    self._run_stats['tables_processed'] += 1
+                    self._run_stats['total_rows_synced'] += load_stats.get('inserted', 0) + load_stats.get('updated', 0)
+                    self._run_stats['validation_errors'] += validation_errors
+                    
+                    # Логируем статистику таблицы
+                    duration_ms = int((time.time() - table_start) * 1000)
+                    await self._log_table_stats(target_table, load_stats, validation_errors, duration_ms)
                         
                 except Exception as e:
                     log.error(f"Failed to process {target_table}: {e}")

@@ -12,8 +12,9 @@ class SchemaManager:
         self.extractor = GSheetsExtractor()
 
     async def deploy_meta_tables(self):
-        """Создает системные таблицы (logs и т.д.)."""
+        """Создает системные таблицы (logs, runs, stats)."""
         ddl = """
+        -- Таблица логов валидации
         CREATE TABLE IF NOT EXISTS validation_logs (
             id BIGSERIAL PRIMARY KEY,
             run_id UUID NOT NULL,
@@ -26,6 +27,38 @@ class SchemaManager:
             created_at TIMESTAMPTZ DEFAULT NOW()
         );
         CREATE INDEX IF NOT EXISTS idx_validation_logs_run_id ON validation_logs(run_id);
+        
+        -- Таблица истории запусков ELT
+        CREATE TABLE IF NOT EXISTS elt_runs (
+            run_id UUID PRIMARY KEY,
+            started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            finished_at TIMESTAMPTZ,
+            status TEXT NOT NULL DEFAULT 'running',
+            mode TEXT NOT NULL DEFAULT 'cdc',
+            tables_processed INTEGER DEFAULT 0,
+            total_rows_synced INTEGER DEFAULT 0,
+            validation_errors INTEGER DEFAULT 0,
+            duration_seconds NUMERIC(10,2),
+            error_message TEXT,
+            CONSTRAINT elt_runs_status_check CHECK (status IN ('running', 'success', 'failed'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_elt_runs_started_at ON elt_runs(started_at DESC);
+        
+        -- Статистика по таблицам за каждый run
+        CREATE TABLE IF NOT EXISTS elt_table_stats (
+            id BIGSERIAL PRIMARY KEY,
+            run_id UUID NOT NULL REFERENCES elt_runs(run_id) ON DELETE CASCADE,
+            table_name TEXT NOT NULL,
+            rows_extracted INTEGER DEFAULT 0,
+            rows_inserted INTEGER DEFAULT 0,
+            rows_updated INTEGER DEFAULT 0,
+            rows_deleted INTEGER DEFAULT 0,
+            rows_unchanged INTEGER DEFAULT 0,
+            validation_errors INTEGER DEFAULT 0,
+            duration_ms INTEGER,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_elt_table_stats_run_id ON elt_table_stats(run_id);
         """
         log.info("Deploying meta tables...")
         await DBConnection.execute(ddl)
