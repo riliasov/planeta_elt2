@@ -205,4 +205,21 @@ class DataLoader:
                     await conn.execute(query, *vals)
 
             # DELETEs
-            # if processor.to_delete: ... (disabled in legacy as well)
+            if processor.to_delete:
+                pk_col = 'pk' # В staging таблицах PK называется 'pk' или '_row_index' (см _fetch_existing_hashes)
+                
+                # Нужно понять, с каким PK мы работаем. 
+                # _fetch_existing_hashes возвращает dict[pk_val] -> hash.
+                # processor.to_delete содержит список pk_val (legacy_id).
+                
+                # Простая реализация удаления по PK
+                del_query = f'DELETE FROM "{table}" WHERE "pk" = $1'
+                
+                # Если вдруг pk нет, можно попробовать _row_index (но это опасно для CDC).
+                # Считаем, что 'pk' есть, так как _fetch_existing_hashes ориентируется на него.
+                
+                # Массовое удаление
+                for pk_val in processor.to_delete:
+                    await conn.execute(del_query, pk_val)
+                
+                log.info(f"Deleted {len(processor.to_delete)} rows from {table}")

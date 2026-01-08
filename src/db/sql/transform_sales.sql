@@ -4,12 +4,14 @@
 
 -- === ТЕКУЩИЕ ПРОДАЖИ ===
 INSERT INTO sales (
-    legacy_id, date, product_name, type, category,
+    legacy_id, row_hash, source, date, product_name, type, category,
     quantity, full_price, discount, final_price,
     cash, transfer, terminal, debt, comment, client_id
 )
 SELECT DISTINCT ON (legacy_id)
     md5(COALESCE("дата"::text, '') || COALESCE("клиент"::text, '') || COALESCE("продукт"::text, '') || COALESCE("окончательная_стоимость"::text, '')) as legacy_id,
+    "__row_hash" as row_hash,
+    'sales_cur' as source,
     CASE 
         WHEN "дата"::text ~ '\d{2}\.\d{2}\.\d{2}' 
         THEN TO_DATE(substring("дата"::text from '\d{2}\.\d{2}\.\d{2}'), 'DD.MM.YY')::timestamptz
@@ -35,6 +37,8 @@ WHERE NULLIF(TRIM("продукт"::text), '') IS NOT NULL
   AND (SELECT id FROM clients c WHERE c.name = sales_cur."клиент"::text LIMIT 1) IS NOT NULL
 ORDER BY legacy_id
 ON CONFLICT (legacy_id) DO UPDATE SET
+    row_hash = EXCLUDED.row_hash,
+    source = EXCLUDED.source,
     date = EXCLUDED.date,
     product_name = EXCLUDED.product_name,
     type = EXCLUDED.type,
@@ -53,12 +57,14 @@ ON CONFLICT (legacy_id) DO UPDATE SET
 
 -- === ИСТОРИЧЕСКИЕ ПРОДАЖИ ===
 INSERT INTO sales (
-    legacy_id, date, product_name, type, category,
+    legacy_id, row_hash, source, date, product_name, type, category,
     quantity, full_price, discount, final_price,
     cash, transfer, terminal, debt, comment, client_id
 )
 SELECT DISTINCT ON (legacy_id)
     md5(COALESCE("дата"::text, '') || COALESCE("клиент"::text, '') || COALESCE("продукт"::text, '') || COALESCE("окончательная_стоимость"::text, '')) as legacy_id,
+    "__row_hash" as row_hash,
+    'sales_hst' as source,
     CASE 
         WHEN "дата"::text ~ '\d{2}\.\d{2}\.\d{2}' 
         THEN TO_DATE(substring("дата"::text from '\d{2}\.\d{2}\.\d{2}'), 'DD.MM.YY')::timestamptz
@@ -84,6 +90,8 @@ WHERE NULLIF(TRIM("продукт"::text), '') IS NOT NULL
   AND (SELECT id FROM clients c WHERE c.name = sales_hst."клиент"::text LIMIT 1) IS NOT NULL
 ORDER BY legacy_id
 ON CONFLICT (legacy_id) DO UPDATE SET
+    row_hash = EXCLUDED.row_hash,
+    source = EXCLUDED.source,
     date = EXCLUDED.date,
     product_name = EXCLUDED.product_name,
     type = EXCLUDED.type,
