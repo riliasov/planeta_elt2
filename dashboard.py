@@ -19,101 +19,126 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Стили для светлого SaaS Minimal стиля
+# Стили для Ultra-Compact SaaS стиля
 st.markdown("""
 <style>
-    /* Global Background */
+    /* Global Background & Font */
     .stApp {
         background-color: #f8fafc;
-        color: #0f172a;
+        color: #334155;
         font-family: 'Inter', sans-serif;
+        font-size: 11px !important;
+    }
+    
+    /* Main container padding */
+    .block-container {
+        padding-top: 1rem !important;
+        padding-bottom: 2rem !important;
+        max-width: 100% !important;
     }
 
-    /* Metric Cards */
+    /* Metric Cards Compact */
     .stMetric {
         background-color: #ffffff;
         border: 1px solid #e2e8f0;
-        border-radius: 8px;
-        padding: 16px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        border-radius: 6px;
+        padding: 8px 12px !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.03);
     }
     
     .stMetric label {
         color: #64748b !important;
-        font-size: 0.875rem !important;
+        font-size: 10px !important;
         font-weight: 500 !important;
+        margin-bottom: 0px !important;
     }
     
     .stMetric [data-testid="stMetricValue"] {
         color: #0f172a !important;
-        font-size: 1.75rem !important;
+        font-size: 18px !important;
         font-weight: 600 !important;
+        padding: 2px 0 !important;
     }
     
     /* Custom containers (mockup for cards) */
     div[data-testid="stHorizontalBlock"] > div {
         background: transparent; 
         padding: 0px;
+        gap: 0.5rem !important;
     }
 
-    /* Headings */
+    /* Headings Compact */
     h1 {
         color: #0f172a;
         font-weight: 700;
-        font-size: 2.25rem;
-        letter-spacing: -0.025em;
+        font-size: 16px !important;
+        letter-spacing: -0.01em;
+        margin-bottom: 0.5rem !important;
+        padding: 0 !important;
     }
     
-    h2, h3 {
-        color: #334155;
-        font-weight: 600;
-        letter-spacing: -0.025em;
-    }
-    
-    .stCaption {
-        color: #64748b;
+    h2 {
+        font-size: 14px !important;
+        margin-bottom: 0.5rem !important;
     }
 
-    /* Status Badges */
-    .status-success {
-        background-color: #dcfce7;
-        color: #166534;
-        padding: 2px 10px;
-        border-radius: 12px;
-        font-size: 0.75rem;
+    h3 {
+        color: #334155;
         font-weight: 600;
-        border: 1px solid #bbf7d0;
+        font-size: 13px !important;
+        letter-spacing: -0.01em;
+        margin-top: 1rem !important;
+        margin-bottom: 0.5rem !important;
+        padding-bottom: 4px;
+        border-bottom: 1px solid #e2e8f0;
     }
     
-    .status-failed {
-        background-color: #fee2e2;
-        color: #991b1b;
-        padding: 2px 10px;
-        border-radius: 12px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        border: 1px solid #fecaca;
-    }
-    
-    .status-running {
-        background-color: #fef3c7;
-        color: #92400e;
-        padding: 2px 10px;
-        border-radius: 12px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        border: 1px solid #fde68a;
-    }
-    
-    /* Sidebar */
+    /* Sidebar Compact */
     [data-testid="stSidebar"] {
         background-color: #ffffff;
         border-right: 1px solid #e2e8f0;
+        padding-top: 1rem !important;
     }
     
+    [data-testid="stSidebar"] h2 {
+        font-size: 12px !important;
+        text-transform: uppercase;
+        color: #94a3b8;
+        letter-spacing: 0.05em;
+    }
+    
+    /* Tables Compact */
+    div[data-testid="stDataFrame"] {
+        font-size: 11px !important;
+    }
+    
+    table {
+        font-size: 11px !important;
+    }
+
+    /* Alerts / Info */
+    .stAlert {
+        padding: 4px 12px !important;
+        font-size: 11px !important;
+    }
+
     hr {
-        margin: 24px 0;
+        margin: 12px 0 !important;
         border-color: #e2e8f0;
+    }
+    
+    /* Columns Gap */
+    div[data-testid="column"] {
+        padding: 0 !important;
+    }
+    
+    /* Radio Button Compact */
+    .stRadio > label {
+        display: none;
+    }
+    .stRadio div[role="radiogroup"] > label {
+        padding: 4px 8px !important;
+        font-size: 12px !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -221,194 +246,157 @@ def render_status_badge(status: str) -> str:
     return f'<span class="status-{status}">{icons.get(status, "?")} {status}</span>'
 
 
+
 def main():
-    # Header
-    st.title("📊 ELT Dashboard")
-    st.caption("Мониторинг пайплайна • История запусков • Метрики загрузки")
-    
-    # Sidebar
+    # Sidebar Navigation
     with st.sidebar:
-        st.header("⚙️ Фильтры")
-        days_range = st.slider("Период (дней)", 1, 90, 30)
-        auto_refresh = st.checkbox("Авто-обновление (30с)", value=False)
+        st.header("Planeta ELT")
+        page = st.radio(
+            "Navigation", 
+            ["Overview", "Table Stats", "Validation Errors"],
+            label_visibility="collapsed"
+        )
+        
+        st.divider()
+        
+        st.header("Filters")
+        days_range = st.slider("Period (days)", 1, 90, 30)
+        auto_refresh = st.checkbox("Auto-refresh (30s)", value=False)
         
         if auto_refresh:
             st.rerun()
         
         st.divider()
-        st.caption("Последнее обновление:")
-        st.caption(datetime.now().strftime("%H:%M:%S"))
-    
-    # Загрузка данных
+        st.caption(f"Last update: {datetime.now().strftime('%H:%M:%S')}")
+
+    # Load shared data
     runs_df = fetch_runs_data(days_range)
-    
-    if runs_df.empty:
-        st.info("📭 Нет данных о запусках ELT. Запустите пайплайн командой:\n\n```bash\npython -m src.main\n```")
-        return
-    
-    # === KPI Cards ===
-    st.subheader("📈 Обзор")
-    
-    col1, col2, col3, col4, col5 = st.columns(5)
-    
-    total_runs = len(runs_df)
-    successful = len(runs_df[runs_df['status'] == 'success'])
-    failed = len(runs_df[runs_df['status'] == 'failed'])
-    success_rate = (successful / total_runs * 100) if total_runs > 0 else 0
-    
-    with col1:
-        st.metric("Всего запусков", total_runs)
-    
-    with col2:
-        st.metric("Успешных", successful, delta=f"{success_rate:.0f}%")
-    
-    with col3:
-        st.metric("Ошибок", failed, delta_color="inverse")
-    
-    with col4:
+
+    # PAGE: OVERVIEW
+    if page == "Overview":
+        st.markdown("### 📊 Pipeline Overview")
+        
+        if runs_df.empty:
+            st.info("No data. Run pipeline: `python -m src.main`")
+            return
+
+        # KPI Compact
+        col1, col2, col3, col4, col5 = st.columns(5)
+        
+        total_runs = len(runs_df)
+        successful = len(runs_df[runs_df['status'] == 'success'])
+        failed = len(runs_df[runs_df['status'] == 'failed'])
+        success_rate = (successful / total_runs * 100) if total_runs > 0 else 0
+        
         total_rows = runs_df['total_rows_synced'].sum()
-        st.metric("Строк загружено", f"{total_rows:,}")
-    
-    with col5:
         avg_duration = runs_df['duration_seconds'].mean()
-        st.metric("Ср. время (сек)", f"{avg_duration:.1f}" if pd.notna(avg_duration) else "—")
-    
-    st.divider()
-    
-    # === Charts ===
-    col_chart1, col_chart2 = st.columns(2)
-    
-    with col_chart1:
-        st.subheader("📅 История запусков")
+
+        col1.metric("Total Runs", total_runs)
+        col2.metric("Success", successful, f"{success_rate:.0f}%")
+        col3.metric("Errors", failed, delta_color="inverse")
+        col4.metric("Rows", f"{total_rows:,}")
+        col5.metric("Avg Time", f"{avg_duration:.1f}s" if pd.notna(avg_duration) else "—")
         
-        if 'started_at' in runs_df.columns:
-            runs_df['date'] = pd.to_datetime(runs_df['started_at']).dt.date
-            daily = runs_df.groupby(['date', 'status']).size().reset_index(name='count')
+        st.markdown("---")
+        
+        # Charts Compact
+        c1, c2 = st.columns([1, 1])
+        
+        with c1:
+            st.markdown("#### Run History")
+            if 'started_at' in runs_df.columns:
+                runs_df['date'] = pd.to_datetime(runs_df['started_at']).dt.date
+                daily = runs_df.groupby(['date', 'status']).size().reset_index(name='count')
+                
+                fig = px.bar(
+                    daily, x='date', y='count', color='status',
+                    color_discrete_map={'success': '#10b981', 'failed': '#ef4444', 'running': '#f59e0b'},
+                    barmode='stack', template='plotly_white', height=250
+                )
+                fig.update_layout(
+                    margin=dict(l=0, r=0, t=0, b=0),
+                    font=dict(size=10, color="#64748b"),
+                    xaxis_title=None, yaxis_title=None,
+                    showlegend=False
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+        with c2:
+            st.markdown("#### Duration (sec)")
+            recent = runs_df.head(30)
+            if not recent.empty and 'duration_seconds' in recent.columns:
+                recent['label'] = pd.to_datetime(recent['started_at']).dt.strftime('%m/%d %H:%M')
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(
+                    x=recent['label'], y=recent['duration_seconds'],
+                    mode='lines', line=dict(color='#3b82f6', width=1),
+                    fill='tozeroy', fillcolor='rgba(59, 130, 246, 0.05)'
+                ))
+                fig.update_layout(
+                    template='plotly_white', height=250,
+                    margin=dict(l=0, r=0, t=0, b=0),
+                    font=dict(size=10, color="#64748b"),
+                    xaxis_title=None, yaxis_title=None,
+                    showlegend=False
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("#### Recent Runs")
+        display_df = runs_df.head(15).copy()
+        if not display_df.empty:
+            display_df['started_at'] = pd.to_datetime(display_df['started_at']).dt.strftime('%Y-%m-%d %H:%M')
+            display_df['duration'] = display_df['duration_seconds'].apply(lambda x: f"{x:.1f}s" if pd.notna(x) else "—")
             
-            fig = px.bar(
-                daily, 
-                x='date', 
-                y='count', 
-                color='status',
-                color_discrete_map={'success': '#10b981', 'failed': '#ef4444', 'running': '#f59e0b'},
-                barmode='stack',
-                template='plotly_white'
+            st.dataframe(
+                display_df[['started_at', 'status', 'mode', 'tables_processed', 'total_rows_synced', 'validation_errors', 'duration']],
+                height=300,
+                hide_index=True,
+                use_container_width=True
             )
-            fig.update_layout(
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                xaxis_title="",
-                yaxis_title="Запусков",
-                legend_title="Статус",
-                margin=dict(l=0, r=0, t=10, b=0),
-                font=dict(family="Inter, sans-serif", color="#64748b")
-            )
-            st.plotly_chart(fig, use_container_width=True)
-    
-    with col_chart2:
-        st.subheader("⏱️ Время выполнения")
+
+    # PAGE: TABLE STATS
+    elif page == "Table Stats":
+        st.markdown("### 📋 Table Statistics")
+        stats_df = fetch_table_stats()
         
-        recent_runs = runs_df.head(20).copy()
-        if not recent_runs.empty and 'duration_seconds' in recent_runs.columns:
-            recent_runs['run_label'] = pd.to_datetime(recent_runs['started_at']).dt.strftime('%m/%d %H:%M')
-            
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=recent_runs['run_label'],
-                y=recent_runs['duration_seconds'],
-                mode='lines+markers',
-                line=dict(color='#3b82f6', width=2),
-                marker=dict(size=8, color='#3b82f6', line=dict(width=2, color='white')),
-                fill='tozeroy',
-                fillcolor='rgba(59, 130, 246, 0.1)'
-            ))
-            fig.update_layout(
-                template='plotly_white',
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                xaxis_title="",
-                yaxis_title="Секунды",
-                margin=dict(l=0, r=0, t=10, b=0),
-                showlegend=False,
-                font=dict(family="Inter, sans-serif", color="#64748b")
-            )
-            st.plotly_chart(fig, use_container_width=True)
-    
-    st.divider()
-    
-    # === Recent Runs Table ===
-    st.subheader("🕒 Последние запуски")
-    
-    display_df = runs_df.head(10).copy()
-    if not display_df.empty:
-        display_df['started_at'] = pd.to_datetime(display_df['started_at']).dt.strftime('%Y-%m-%d %H:%M:%S')
-        display_df['duration'] = display_df['duration_seconds'].apply(lambda x: f"{x:.1f}s" if pd.notna(x) else "—")
-        
-        st.dataframe(
-            display_df[['started_at', 'status', 'mode', 'tables_processed', 'total_rows_synced', 'validation_errors', 'duration']],
-            column_config={
-                'started_at': st.column_config.TextColumn('Время старта'),
-                'status': st.column_config.TextColumn('Статус'),
-                'mode': st.column_config.TextColumn('Режим'),
-                'tables_processed': st.column_config.NumberColumn('Таблиц'),
-                'total_rows_synced': st.column_config.NumberColumn('Строк'),
-                'validation_errors': st.column_config.NumberColumn('Ошибок валидации'),
-                'duration': st.column_config.TextColumn('Время')
-            },
-            hide_index=True,
-            use_container_width=True
-        )
-    
-    # === Table Stats (expandable) ===
-    with st.expander("📊 Статистика по таблицам"):
-        table_stats_df = fetch_table_stats()
-        if not table_stats_df.empty:
-            # Агрегация по таблицам
-            agg = table_stats_df.groupby('table_name').agg({
+        if not stats_df.empty:
+            # Aggregate stats
+            agg = stats_df.groupby('table_name').agg({
                 'rows_inserted': 'sum',
                 'rows_updated': 'sum',
                 'rows_deleted': 'sum',
                 'validation_errors': 'sum',
-                'duration_ms': 'mean'
+                'duration_ms': 'mean',
+                'run_id': 'count' # count runs
             }).reset_index()
-            agg['avg_duration_ms'] = agg['duration_ms'].round(0).astype(int)
+            agg['avg_ms'] = agg['duration_ms'].round(0).astype(int)
+            agg.rename(columns={'run_id': 'runs_count'}, inplace=True)
             
             st.dataframe(
-                agg[['table_name', 'rows_inserted', 'rows_updated', 'rows_deleted', 'validation_errors', 'avg_duration_ms']],
-                column_config={
-                    'table_name': st.column_config.TextColumn('Таблица'),
-                    'rows_inserted': st.column_config.NumberColumn('Вставлено'),
-                    'rows_updated': st.column_config.NumberColumn('Обновлено'),
-                    'rows_deleted': st.column_config.NumberColumn('Удалено'),
-                    'validation_errors': st.column_config.NumberColumn('Ошибок'),
-                    'avg_duration_ms': st.column_config.NumberColumn('Ср. время (мс)')
-                },
-                hide_index=True,
-                use_container_width=True
+                agg[['table_name', 'runs_count', 'rows_inserted', 'rows_updated', 'rows_deleted', 'validation_errors', 'avg_ms']],
+                use_container_width=True,
+                height=600,
+                hide_index=True
             )
         else:
-            st.info("Нет данных по таблицам")
-    
-    # === Validation Errors (expandable) ===
-    with st.expander("⚠️ Ошибки валидации"):
-        errors_df = fetch_validation_errors()
+            st.info("No table stats available.")
+
+    # PAGE: VALIDATION ERRORS
+    elif page == "Validation Errors":
+        st.markdown("### ⚠️ Validation Errors Log")
+        limit = st.selectbox("Rows limit", [50, 100, 500], index=1)
+        errors_df = fetch_validation_errors(limit=limit)
+        
         if not errors_df.empty:
             errors_df['created_at'] = pd.to_datetime(errors_df['created_at']).dt.strftime('%Y-%m-%d %H:%M')
             st.dataframe(
-                errors_df[['created_at', 'table_name', 'row_index', 'column_name', 'error_type', 'message']].head(50),
-                column_config={
-                    'created_at': 'Время',
-                    'table_name': 'Таблица',
-                    'row_index': 'Строка',
-                    'column_name': 'Колонка',
-                    'error_type': 'Тип ошибки',
-                    'message': 'Сообщение'
-                },
-                hide_index=True,
-                use_container_width=True
+                errors_df[['created_at', 'table_name', 'column_name', 'invalid_value', 'error_type', 'message']],
+                use_container_width=True,
+                height=700,
+                hide_index=True
             )
         else:
-            st.success("✓ Ошибок валидации не обнаружено")
+            st.success("No validation errors found.")
 
 
 if __name__ == "__main__":
