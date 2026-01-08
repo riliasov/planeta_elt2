@@ -19,96 +19,127 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Стили для современного dark-mode вида
+# Стили для светлого SaaS Minimal стиля
 st.markdown("""
 <style>
-    /* Основные стили */
+    /* Global Background */
+    .stApp {
+        background-color: #f8fafc;
+        color: #0f172a;
+        font-family: 'Inter', sans-serif;
+    }
+
+    /* Metric Cards */
     .stMetric {
-        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-        border-radius: 12px;
+        background-color: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
         padding: 16px;
-        border: 1px solid rgba(255,255,255,0.1);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
     
     .stMetric label {
-        color: #8b8b8b !important;
+        color: #64748b !important;
+        font-size: 0.875rem !important;
+        font-weight: 500 !important;
     }
     
     .stMetric [data-testid="stMetricValue"] {
-        font-size: 2rem !important;
+        color: #0f172a !important;
+        font-size: 1.75rem !important;
         font-weight: 600 !important;
     }
     
-    /* Карточки */
+    /* Custom containers (mockup for cards) */
     div[data-testid="stHorizontalBlock"] > div {
-        background: rgba(26,26,46,0.5);
-        border-radius: 12px;
-        padding: 8px;
+        background: transparent; 
+        padding: 0px;
     }
-    
-    /* Заголовки */
+
+    /* Headings */
     h1 {
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+        color: #0f172a;
         font-weight: 700;
+        font-size: 2.25rem;
+        letter-spacing: -0.025em;
     }
     
-    h3 {
-        color: #a0a0a0;
-        font-weight: 500;
-        border-bottom: 1px solid rgba(255,255,255,0.1);
-        padding-bottom: 8px;
+    h2, h3 {
+        color: #334155;
+        font-weight: 600;
+        letter-spacing: -0.025em;
     }
     
-    /* Status badges */
+    .stCaption {
+        color: #64748b;
+    }
+
+    /* Status Badges */
     .status-success {
-        background: #10b981;
-        color: white;
-        padding: 4px 12px;
-        border-radius: 20px;
-        font-size: 0.875rem;
+        background-color: #dcfce7;
+        color: #166534;
+        padding: 2px 10px;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        border: 1px solid #bbf7d0;
     }
     
     .status-failed {
-        background: #ef4444;
-        color: white;
-        padding: 4px 12px;
-        border-radius: 20px;
-        font-size: 0.875rem;
+        background-color: #fee2e2;
+        color: #991b1b;
+        padding: 2px 10px;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        border: 1px solid #fecaca;
     }
     
     .status-running {
-        background: #f59e0b;
-        color: white;
-        padding: 4px 12px;
-        border-radius: 20px;
-        font-size: 0.875rem;
+        background-color: #fef3c7;
+        color: #92400e;
+        padding: 2px 10px;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        border: 1px solid #fde68a;
+    }
+    
+    /* Sidebar */
+    [data-testid="stSidebar"] {
+        background-color: #ffffff;
+        border-right: 1px solid #e2e8f0;
+    }
+    
+    hr {
+        margin: 24px 0;
+        border-color: #e2e8f0;
     }
 </style>
 """, unsafe_allow_html=True)
 
 
-async def get_db_connection():
-    """Устанавливает соединение с БД."""
+async def get_db_conn():
+    """Устанавливает прямое соединение с БД для Streamlit."""
     import asyncpg
-    return await asyncpg.connect(os.getenv("DATABASE_URL"))
+    from src.config.settings import settings
+    return await asyncpg.connect(settings.database_dsn)
 
 
 @st.cache_data(ttl=30)
 def fetch_runs_data(_days: int = 30) -> pd.DataFrame:
     """Получает историю запусков за последние N дней."""
     async def _fetch():
-        conn = await get_db_connection()
+        conn = await get_db_conn()
         try:
-            rows = await conn.fetch("""
+            rows = await conn.fetch(f"""
                 SELECT run_id, started_at, finished_at, status, mode,
                        tables_processed, total_rows_synced, validation_errors,
                        duration_seconds, error_message
                 FROM elt_runs
-                WHERE started_at > NOW() - INTERVAL '%s days'
+                WHERE started_at > NOW() - INTERVAL '{_days} days'
                 ORDER BY started_at DESC
-            """ % _days)
+            """)
             return [dict(r) for r in rows]
         finally:
             await conn.close()
@@ -117,7 +148,9 @@ def fetch_runs_data(_days: int = 30) -> pd.DataFrame:
         data = asyncio.run(_fetch())
         return pd.DataFrame(data) if data else pd.DataFrame()
     except Exception as e:
-        st.warning(f"Ошибка подключения к БД: {e}")
+        # Не выводим ворнинг если таблиц еще нет (первый запуск)
+        if "relation \"elt_runs\" does not exist" not in str(e):
+            st.warning(f"Ошибка получения данных: {e}")
         return pd.DataFrame()
 
 
@@ -125,7 +158,7 @@ def fetch_runs_data(_days: int = 30) -> pd.DataFrame:
 def fetch_table_stats(run_id: str = None) -> pd.DataFrame:
     """Получает статистику по таблицам."""
     async def _fetch():
-        conn = await get_db_connection()
+        conn = await get_db_conn()
         try:
             if run_id:
                 rows = await conn.fetch("""
@@ -156,7 +189,7 @@ def fetch_table_stats(run_id: str = None) -> pd.DataFrame:
 def fetch_validation_errors(run_id: str = None, limit: int = 50) -> pd.DataFrame:
     """Получает ошибки валидации."""
     async def _fetch():
-        conn = await get_db_connection()
+        conn = await get_db_conn()
         try:
             if run_id:
                 rows = await conn.fetch("""
@@ -258,7 +291,8 @@ def main():
                 y='count', 
                 color='status',
                 color_discrete_map={'success': '#10b981', 'failed': '#ef4444', 'running': '#f59e0b'},
-                barmode='stack'
+                barmode='stack',
+                template='plotly_white'
             )
             fig.update_layout(
                 plot_bgcolor='rgba(0,0,0,0)',
@@ -266,7 +300,8 @@ def main():
                 xaxis_title="",
                 yaxis_title="Запусков",
                 legend_title="Статус",
-                margin=dict(l=0, r=0, t=20, b=0)
+                margin=dict(l=0, r=0, t=10, b=0),
+                font=dict(family="Inter, sans-serif", color="#64748b")
             )
             st.plotly_chart(fig, use_container_width=True)
     
@@ -282,18 +317,20 @@ def main():
                 x=recent_runs['run_label'],
                 y=recent_runs['duration_seconds'],
                 mode='lines+markers',
-                line=dict(color='#667eea', width=2),
-                marker=dict(size=8),
+                line=dict(color='#3b82f6', width=2),
+                marker=dict(size=8, color='#3b82f6', line=dict(width=2, color='white')),
                 fill='tozeroy',
-                fillcolor='rgba(102,126,234,0.2)'
+                fillcolor='rgba(59, 130, 246, 0.1)'
             ))
             fig.update_layout(
+                template='plotly_white',
                 plot_bgcolor='rgba(0,0,0,0)',
                 paper_bgcolor='rgba(0,0,0,0)',
                 xaxis_title="",
                 yaxis_title="Секунды",
-                margin=dict(l=0, r=0, t=20, b=0),
-                showlegend=False
+                margin=dict(l=0, r=0, t=10, b=0),
+                showlegend=False,
+                font=dict(family="Inter, sans-serif", color="#64748b")
             )
             st.plotly_chart(fig, use_container_width=True)
     
