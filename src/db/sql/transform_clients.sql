@@ -7,24 +7,24 @@ INSERT INTO clients (
     age, spent, balance, debt, status
 )
 SELECT DISTINCT ON (legacy_id)
-    md5(COALESCE("клиент"::text, '') || COALESCE("мобильный"::text, '')) as legacy_id,
+    md5(COALESCE("klient"::text, '') || COALESCE("mobilnyy"::text, '')) as legacy_id,
     "__row_hash" as row_hash,
     'clients_cur' as source,
-    COALESCE(NULLIF(TRIM("клиент"::text), ''), 'Без имени') as name,
-    COALESCE(NULLIF(TRIM("мобильный"::text), ''), '+70000000000') as phone,
-    NULLIF(TRIM("имя_ребенка"::text), '') as child_name,
+    COALESCE(NULLIF(TRIM("klient"::text), ''), 'Без имени') as name,
+    COALESCE(NULLIF(TRIM("mobilnyy"::text), ''), '+70000000000') as phone,
+    NULLIF(TRIM("imya_rebenka"::text), '') as child_name,
     CASE 
-        WHEN "дата_рождения_ребенка"::text ~ '^\d{2}\.\d{2}\.\d{4}$' 
-        THEN TO_DATE("дата_рождения_ребенка"::text, 'DD.MM.YYYY')
+        WHEN "data_rozhdeniya_rebenka"::text ~ '^\d{2}\.\d{2}\.\d{4}$' 
+        THEN TO_DATE("data_rozhdeniya_rebenka"::text, 'DD.MM.YYYY')
         ELSE NULL 
     END as child_dob,
     NULL as age,
     0 as spent,
     0 as balance,
     0 as debt,
-    NULLIF(TRIM("тип"::text), '') as status
+    NULLIF(TRIM("tip"::text), '') as status
 FROM clients_cur
-WHERE NULLIF(TRIM("клиент"::text), '') IS NOT NULL
+WHERE NULLIF(TRIM("klient"::text), '') IS NOT NULL
 ORDER BY legacy_id
 ON CONFLICT (legacy_id) DO UPDATE SET
     row_hash = EXCLUDED.row_hash,

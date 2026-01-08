@@ -182,10 +182,12 @@ class ELTPipeline:
                     else:
                         log.info(f"✓ {target_table}: all rows are valid")
 
+                    pk_field = sheet_cfg.get('pk', '__row_hash')
+
                     # 3. Load (или только показать статистику в dry-run)
                     if dry_run_mode:
                         # В dry-run режиме только вычисляем статистику без применения
-                        load_stats = await self.loader.calculate_changes(target_table, col_names, rows)
+                        load_stats = await self.loader.calculate_changes(target_table, col_names, rows, pk_field)
                         log.info(f"🔍 DRY-RUN {target_table}: "
                                 f"would insert={load_stats.get('insert', 0)}, "
                                 f"update={load_stats.get('update', 0)}, "
@@ -194,7 +196,7 @@ class ELTPipeline:
                     elif is_full_refresh:
                         load_stats = await self.loader.load_full_refresh(target_table, col_names, rows)
                     else:
-                        load_stats = await self.loader.load_cdc(target_table, col_names, rows)
+                        load_stats = await self.loader.load_cdc(target_table, col_names, rows, pk_field)
                     
                     # Добавляем extracted count
                     load_stats['extracted'] = len(rows)

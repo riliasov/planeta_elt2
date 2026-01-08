@@ -3,6 +3,8 @@ asyncpg
 python-dotenv
 PyYAML
 google-auth
+google-api-python-client
+pydantic
 pydantic-settings
 streamlit
 plotly

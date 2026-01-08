@@ -163,7 +163,7 @@ class TestContractValidator:
         """Некорректный формат даты — ошибка."""
         contract = validator.load_contract('sales')
         row = {
-            'дата': '2025-12-01',  # ISO формат не в контракте sales
+            'дата': '2025/12/01',  # Format forbidden in contract
             'клиент': 'Иванов',
             'продукт': 'Товар'
         }

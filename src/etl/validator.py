@@ -4,13 +4,15 @@ import re
 import logging
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
-from dataclasses import dataclass, field
+from typing import List, Dict, Any, Optional, Tuple
 
 log = logging.getLogger('validator')
 
 
-@dataclass
-class ValidationError:
+from pydantic import BaseModel, Field, field_validator
+
+# Removed dataclass decorator as we are moving to Pydantic
+class ValidationError(BaseModel):
     """Описание ошибки валидации."""
     row_index: int
     column: str
@@ -19,13 +21,12 @@ class ValidationError:
     message: str
 
 
-@dataclass
-class ValidationResult:
+class ValidationResult(BaseModel):
     """Результат валидации набора данных."""
     is_valid: bool
     total_rows: int
     valid_rows: int
-    errors: List[ValidationError] = field(default_factory=list)
+    errors: List[ValidationError] = Field(default_factory=list)
     
     @property
     def error_rate(self) -> float:

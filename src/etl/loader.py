@@ -52,38 +52,39 @@ class DataLoader:
         log.info(f"Full Refresh finished for {table}: {stats}")
         return stats
 
-    async def load_cdc(self, table: str, col_names: List[str], rows: List[List[Any]]) -> Dict[str, int]:
+    async def load_cdc(self, table: str, col_names: List[str], rows: List[List[Any]], pk_field: str = '__row_hash') -> Dict[str, int]:
         """
         Инкрементальная загрузка с использованием CDC.
         """
-        log.info(f"CDC loading into {table} ({len(rows)} rows from source)")
+        log.info(f"CDC loading into {table} ({len(rows)} rows from source) [PK: {pk_field}]")
         
         # 1. Получаем текущие хеши из БД
-        existing_hashes = await self._fetch_existing_hashes(table)
+        existing_hashes = await self._fetch_existing_hashes(table, pk_field)
         processor = CDCProcessor(existing_hashes)
         
         # 2. Обрабатываем входящие строки
         for idx, r in enumerate(rows):
             row_num = idx + 2
             try:
-                # Подготовка данных (аналогично full refresh)
+                # Подготовка данных
                 full_row = list(r) + [None] * (len(col_names) - len(r))
                 full_row = full_row[:len(col_names)]
                 full_row_str = [str(val) if val not in (None, '') else None for val in full_row]
                 
                 row_hash = compute_row_hash(full_row_str)
                 
-                # PK identification logic (legacy_id)
-                # Ищем колонку 'pk', если её нет - используем row_num как fallback, но для legacy_id лучше pk
-                pk_val = None
-                if 'pk' in col_names:
-                    pk_idx = col_names.index('pk')
+                # PK identification logic
+                if pk_field == '__row_hash':
+                    pk_val = row_hash
+                elif pk_field in col_names:
+                    pk_idx = col_names.index(pk_field)
                     pk_val = full_row_str[pk_idx]
-                
+                else:
+                    # Fallback if PK field configured but not found in columns (unlikely if schema matches)
+                    # For safety, skip or log warning
+                    pk_val = None
+
                 if not pk_val:
-                     # Если нет PK в данных, CDC работатть сложнее.
-                     # но в текущем проекте у всех важных таблиц есть pk.
-                     # Если pk нет, можно пропустить или использовать row_num (ненадежно)
                      continue
 
                 row_data = {col: val for col, val in zip(col_names, full_row_str)}
@@ -96,22 +97,19 @@ class DataLoader:
 
         processor.finalize()
         cdc_stats = processor.get_stats()
-        log.info(f"CDC Analysis for {table}: {cdc_stats}")
-
+        
         # 3. Применяем изменения
-        await self._apply_cdc_changes(table, processor, col_names)
+        await self._apply_cdc_changes(table, processor, col_names, pk_field)
         
         return cdc_stats
 
-    async def calculate_changes(self, table: str, col_names: List[str], rows: List[List[Any]]) -> Dict[str, int]:
+    async def calculate_changes(self, table: str, col_names: List[str], rows: List[List[Any]], pk_field: str = '__row_hash') -> Dict[str, int]:
         """Вычисляет статистику изменений без применения (для dry-run)."""
-        log.info(f"DRY-RUN: Calculating changes for {table} ({len(rows)} rows from source)")
+        log.info(f"DRY-RUN: Calculating changes for {table} [PK: {pk_field}]")
         
-        # Получаем текущие хеши из БД
-        existing_hashes = await self._fetch_existing_hashes(table)
+        existing_hashes = await self._fetch_existing_hashes(table, pk_field)
         processor = CDCProcessor(existing_hashes)
         
-        # Обрабатываем строки для подсчёта статистики
         for idx, r in enumerate(rows):
             row_num = idx + 2
             try:
@@ -121,10 +119,13 @@ class DataLoader:
                 
                 row_hash = compute_row_hash(full_row_str)
                 
-                pk_val = None
-                if 'pk' in col_names:
-                    pk_idx = col_names.index('pk')
+                if pk_field == '__row_hash':
+                    pk_val = row_hash
+                elif pk_field in col_names:
+                    pk_idx = col_names.index(pk_field)
                     pk_val = full_row_str[pk_idx]
+                else:
+                    pk_val = None
                 
                 if not pk_val:
                     continue
@@ -138,35 +139,21 @@ class DataLoader:
         processor.finalize()
         return processor.get_stats()
 
-    async def _fetch_existing_hashes(self, table: str) -> Dict[str, str]:
-        # В staging таблицах идентификатор - 'pk' или '_row_index'
-        # Пытаемся найти один из них
-        query = f'SELECT pk, __row_hash FROM "{table}" WHERE pk IS NOT NULL'
+    async def _fetch_existing_hashes(self, table: str, pk_field: str) -> Dict[str, str]:
+        # Динамический выбор PK
         try:
-             rows = await DBConnection.fetch(query)
-             return {str(row['pk']): row['__row_hash'] for row in rows if row['__row_hash']}
-        except Exception:
-            # Fallback к _row_index если pk нет
-            query = f'SELECT _row_index::text as id, __row_hash FROM "{table}"'
-            try:
-                rows = await DBConnection.fetch(query)
-                return {row['id']: row['__row_hash'] for row in rows if row['__row_hash']}
-            except Exception as e:
-                log.warning(f"Could not fetch hashes for {table} (maybe first run?): {e}")
-                return {}
+            query = f'SELECT "{pk_field}" as pk, __row_hash FROM "{table}" WHERE "{pk_field}" IS NOT NULL'
+            rows = await DBConnection.fetch(query)
+            return {str(row['pk']): row['__row_hash'] for row in rows if row['__row_hash']}
+        except Exception as e:
+            log.warning(f"Could not fetch hashes for {table} (column {pk_field} missing?): {e}")
+            return {}
 
-    async def _apply_cdc_changes(self, table: str, processor: CDCProcessor, col_names: List[str]):
+    async def _apply_cdc_changes(self, table: str, processor: CDCProcessor, col_names: List[str], pk_field: str):
         """Выполняет INSERT/UPDATE запросы."""
         async with await DBConnection.get_connection() as conn:
             # INSERTs
             if processor.to_insert:
-                # Можно оптимизировать через copy или executemany, 
-                # но для простоты и надежности пока оставим loop или executemany
-                # Здесь используем простой executemany для наглядности (batch insert)
-                pass 
-                # TODO: Implement batch insert for performance if needed. 
-                # For now implementing one-by-one to mirror legacy logic closely or simple loop
-                
                 for item in processor.to_insert:
                     data = item['data']
                     cols = ', '.join([f'"{c}"' for c in col_names] + ['"_row_index"', '"__row_hash"'])
@@ -176,17 +163,15 @@ class DataLoader:
 
             # UPDATEs
             if processor.to_update:
-                pk_col = 'pk'
                 for item in processor.to_update:
                     data = item['data']
-                    pk_val = item['legacy_id'] # Это legacy_id
+                    pk_val = item['legacy_id']
                     
-                    # Динамическое построение SET
                     set_parts = []
                     vals = []
                     idx = 1
                     for c in col_names:
-                        if c == pk_col: continue
+                        if c == pk_field: continue
                         set_parts.append(f'"{c}" = ${idx}')
                         vals.append(data.get(c))
                         idx += 1
@@ -195,30 +180,14 @@ class DataLoader:
                     vals.append(item['hash'])
                     idx += 1
                     
-                    vals.append(pk_val) # WHERE legacy_id / pk
+                    vals.append(pk_val)
                     
-                    # ВАЖНО: В старом коде апдейт был по "pk" (который в базе мб legacy_id).
-                    # В БД колонка называется `pk` или `legacy_id`?
-                    # Смотрим deploy_schema: там `legacy_id` нет в CREATE TABLE, но `transform` делает SELECT legacy_id из `pk`.
-                    # Значит в staging таблице колонка называется `pk`.
-                    query = f'UPDATE "{table}" SET {", ".join(set_parts)} WHERE "pk" = ${idx}'
+                    query = f'UPDATE "{table}" SET {", ".join(set_parts)} WHERE "{pk_field}" = ${idx}'
                     await conn.execute(query, *vals)
 
             # DELETEs
             if processor.to_delete:
-                pk_col = 'pk' # В staging таблицах PK называется 'pk' или '_row_index' (см _fetch_existing_hashes)
-                
-                # Нужно понять, с каким PK мы работаем. 
-                # _fetch_existing_hashes возвращает dict[pk_val] -> hash.
-                # processor.to_delete содержит список pk_val (legacy_id).
-                
-                # Простая реализация удаления по PK
-                del_query = f'DELETE FROM "{table}" WHERE "pk" = $1'
-                
-                # Если вдруг pk нет, можно попробовать _row_index (но это опасно для CDC).
-                # Считаем, что 'pk' есть, так как _fetch_existing_hashes ориентируется на него.
-                
-                # Массовое удаление
+                del_query = f'DELETE FROM "{table}" WHERE "{pk_field}" = $1'
                 for pk_val in processor.to_delete:
                     await conn.execute(del_query, pk_val)
                 
