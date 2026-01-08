@@ -1,0 +1,31 @@
+{
+    "entity": "Rates",
+    "description": "Справочник тарифов и ставок.",
+    "columns": [
+        {
+            "name": "название",
+            "type": "string",
+            "required": true,
+            "description": "Название тарифа"
+        },
+        {
+            "name": "ставка",
+            "type": "money",
+            "required": false,
+            "description": "Ставка в рублях"
+        },
+        {
+            "name": "категория",
+            "type": "string",
+            "required": false
+        },
+        {
+            "name": "комментарий",
+            "type": "string",
+            "required": false
+        }
+    ],
+    "unique_keys": [
+        "название"
+    ]
+}

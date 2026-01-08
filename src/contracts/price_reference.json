@@ -1,0 +1,36 @@
+{
+    "entity": "PriceReference",
+    "description": "Справочник цен на товары и услуги.",
+    "columns": [
+        {
+            "name": "название",
+            "type": "string",
+            "required": true,
+            "description": "Наименование товара/услуги"
+        },
+        {
+            "name": "цена",
+            "type": "money",
+            "required": false,
+            "description": "Базовая цена"
+        },
+        {
+            "name": "категория",
+            "type": "string",
+            "required": false
+        },
+        {
+            "name": "тип",
+            "type": "string",
+            "required": false
+        },
+        {
+            "name": "активен",
+            "type": "boolean",
+            "required": false
+        }
+    ],
+    "unique_keys": [
+        "название"
+    ]
+}

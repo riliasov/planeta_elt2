@@ -64,12 +64,22 @@ class SchemaManager:
         await DBConnection.execute(ddl)
         log.info("Meta tables deployed.")
 
-    async def deploy_staging_tables(self):
-        """Пересоздает staging таблицы на основе заголовков из Sheets."""
+    async def deploy_staging_tables(self, use_staging_schema: bool = False):
+        """Пересоздает staging таблицы на основе заголовков из Sheets.
+        
+        Args:
+            use_staging_schema: Если True, создаёт таблицы в схеме 'staging' вместо 'public'
+        """
+        schema_prefix = 'staging.' if use_staging_schema else ''
+        
         config = settings.sources
         if not config:
             log.warning("No configuration found")
             return
+        
+        # Создаём схему staging если нужно
+        if use_staging_schema:
+            await DBConnection.execute("CREATE SCHEMA IF NOT EXISTS staging")
 
         async with await DBConnection.get_connection() as conn:
             for spreadsheet_id, sdata in config.get('spreadsheets', {}).items():
@@ -110,7 +120,8 @@ class SchemaManager:
                         cols_ddl.append('"__row_hash" text')
                         cols_ddl.append('"_loaded_at" timestamp with time zone default now()')
                         
-                        ddl = f'DROP TABLE IF EXISTS "{target_table}"; CREATE TABLE "{target_table}" ({", ".join(cols_ddl)});'
+                        full_table_name = f'{schema_prefix}"{target_table}"'
+                        ddl = f'DROP TABLE IF EXISTS {full_table_name}; CREATE TABLE {full_table_name} ({", ".join(cols_ddl)});'
                         
                         log.info(f"Deploying schema for {target_table}...")
                         await conn.execute(ddl)

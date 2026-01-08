@@ -1,0 +1,48 @@
+{
+    "entity": "Expenses",
+    "description": "Реестр расходов бизнеса.",
+    "columns": [
+        {
+            "name": "дата",
+            "type": "date",
+            "format": [
+                "DD.MM.YY",
+                "DD.MM.YYYY"
+            ],
+            "required": true,
+            "description": "Дата расхода"
+        },
+        {
+            "name": "категория",
+            "type": "string",
+            "required": true,
+            "description": "Категория расхода"
+        },
+        {
+            "name": "описание",
+            "type": "string",
+            "required": false
+        },
+        {
+            "name": "сумма",
+            "type": "money",
+            "required": true,
+            "description": "Сумма расхода"
+        },
+        {
+            "name": "способ_оплаты",
+            "type": "string",
+            "required": false
+        },
+        {
+            "name": "комментарий",
+            "type": "string",
+            "required": false
+        }
+    ],
+    "unique_keys": [
+        "дата",
+        "категория",
+        "сумма"
+    ]
+}
