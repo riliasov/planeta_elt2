@@ -56,7 +56,7 @@ schedule:
 ## Локальный запуск (без GitHub)
 
 ```bash
-cd /Users/rambook/Developer/planeta/planeta_elt2
+cd /Users/rambook/Developer/planeta/pl-etl-core
 source .venv/bin/activate
 python run_pipeline.py
 ```

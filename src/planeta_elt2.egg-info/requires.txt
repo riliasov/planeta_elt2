@@ -1,0 +1,15 @@
+sqlalchemy>=2.0.23
+alembic>=1.12.1
+asyncpg>=0.29.0
+pydantic-settings>=2.1.0
+gspread>=6.0.0
+google-auth>=2.23.0
+structlog>=23.2.0
+python-dotenv>=1.0.0
+greenlet>=3.0.1
+
+[dev]
+pytest>=7.4.0
+black>=23.11.0
+isort>=5.12.0
+mypy>=1.7.0

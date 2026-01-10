@@ -1,0 +1,80 @@
+Metadata-Version: 2.4
+Name: planeta_elt2
+Version: 0.1.0
+Summary: CDC+ELT system for Google Sheets to Supabase
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: sqlalchemy>=2.0.23
+Requires-Dist: alembic>=1.12.1
+Requires-Dist: asyncpg>=0.29.0
+Requires-Dist: pydantic-settings>=2.1.0
+Requires-Dist: gspread>=6.0.0
+Requires-Dist: google-auth>=2.23.0
+Requires-Dist: structlog>=23.2.0
+Requires-Dist: python-dotenv>=1.0.0
+Requires-Dist: greenlet>=3.0.1
+Provides-Extra: dev
+Requires-Dist: pytest>=7.4.0; extra == "dev"
+Requires-Dist: black>=23.11.0; extra == "dev"
+Requires-Dist: isort>=5.12.0; extra == "dev"
+Requires-Dist: mypy>=1.7.0; extra == "dev"
+
+# Planeta ELT Pipeline v2
+
+ETL пайплайн для синхронизации данных из Google Sheets в Supabase (PostgreSQL).
+Поддерживает инкрементальную загрузку (CDC) и полный рефреш.
+
+## Особенности (v2)
+- **File Logging**: Логи сохраняются в `logs/elt.log` с ротацией.
+- **Strict Validation**: Валидация данных с использованием Pydantic моделей.
+- **CI/CD**: Автоматический запуск тестов через GitHub Actions.
+- **PostgreSQL Schema**: Автоматическая миграция схемы и поддержка soft delete.
+
+## Структура проекта
+
+* `src/` - Исходный код
+    * `etl/` - Основная логика ETL (Extractor, Loader, Transformer)
+    * `db/` - Работа с базой данных
+    * `config/` - Настройки
+    * `utils/` - Утилиты
+* `legacy/` - Старые скрипты (архив)
+* `sources.yml` - Конфигурация источников данных
+* `requirements.txt` - Зависимости
+
+## Установка
+
+1. Установите зависимости:
+```bash
+pip install -r requirements.txt
+```
+
+2. Настройте `.env` (см. HANDOVER.md).
+
+## Использование
+
+Основной скрипт запуска: `src/main.py`.
+
+### Инкрементальная загрузка (CDC)
+Стандартный режим. Загружает только измененные данные.
+```bash
+python src/main.py
+```
+
+### Полная перезагрузка (Full Refresh)
+Очищает целевые таблицы и загружает всё заново.
+```bash
+python src/main.py --full-refresh
+```
+
+### Обновление схемы (Schema Deploy)
+Пересоздает staging таблицы (`*_cur`) на основе текущих заголовков Google Sheets.
+**Внимание**: удаляет данные из staging таблиц! Рекомендуется запускать вместе с `--full-refresh`.
+```bash
+python src/main.py --deploy-schema --full-refresh
+```
+
+### Только трансформация
+Пропускает загрузку из Google Sheets, выполняет только SQL трансформации (staging -> public).
+```bash
+python src/main.py --transform-only
+```

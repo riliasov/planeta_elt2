@@ -1,4 +1,4 @@
-"""Константы проекта planeta_elt2."""
+"""Константы проекта pl-etl-core."""
 
 # Database
 DB_BATCH_SIZE = 1000

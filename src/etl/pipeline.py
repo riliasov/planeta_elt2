@@ -177,8 +177,12 @@ class ELTPipeline:
                     if not val_result.is_valid:
                         validation_errors = len(val_result.errors)
                         log.warning(f"⚠ {target_table}: detected {validation_errors} validation errors")
+                        
                         if not dry_run_mode:
                             await self._log_validation_errors(target_table, val_result)
+
+                        if validation_errors > 30:
+                            raise ValueError(f"CRITICAL: Too many validation errors in {target_table} ({validation_errors} > 30). Aborting.")
                     else:
                         log.info(f"✓ {target_table}: all rows are valid")
 

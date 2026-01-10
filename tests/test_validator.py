@@ -340,6 +340,73 @@ class TestEdgeCases:
         money_errors = [e for e in errors if e.column == 'полная_стоимость']
         assert len(money_errors) == 0
 
+    def test_slugified_keys_validation(self, validator):
+        """Валидатор корректно обрабатывает транслитерированные (slugified) ключи."""
+        contract = validator.load_contract('sales')
+        # Имитируем данные от Extractor'а, где ключи уже транслитерированы
+        # 'дата' -> 'data', 'клиент' -> 'klient', 'продукт' -> 'produkt'
+        row = {
+            'data': '01.12.25',
+            'klient': 'Иванов',
+            'produkt': 'Товар',
+            'kolichestvo': '5'
+        }
+        
+        errors = validator.validate_row(row, contract, 0)
+        
+        # Ошибок быть не должно, т.к. валидатор должен найти 'data' для 'дата'
+        assert len(errors) == 0, f"Errors found with slugified keys: {errors}"
+
+    def test_complex_header_mapping(self, validator):
+        """Проверка сложного маппинга заголовков (спецсимволы, регистр, пробелы)."""
+        # Создаем временный контракт "на лету"
+        custom_contract = {
+            "entity": "TestEntity",
+            "columns": [
+                {"name": "Полная Стоимость", "type": "string", "required": True},  # -> polnaya_stoimost
+                {"name": "Email Адрес", "type": "string"},  # -> email_adres
+                {"name": "№ Телефона", "type": "string"}, # -> telefon (если спецсимволы убираются)
+            ]
+        }
+        
+        # Симулируем данные от Extractor (который прогнал slugify)
+        row = {
+            'polnaya_stoimost': '100',
+            'email_adres': 'test@example.com',
+            'telefon': '123'
+        }
+        
+        errors = validator.validate_row(row, custom_contract, 0)
+        assert len(errors) == 0, f"Validator failed to map complex headers: {[e.column for e in errors]}"
+        
+        # Проверяем, что отсутствие slugified ключа все равно вызывает ошибку
+        bad_row = {
+            'wrong_column': '100',
+            'email_adres': 'test@example.com'
+        }
+        errors_bad = validator.validate_row(bad_row, custom_contract, 0)
+        assert any(e.column == 'Полная Стоимость' and e.error_type == 'MISSING_REQUIRED' for e in errors_bad)
+
+    def test_column_renaming_fails_validation(self, validator):
+        """Смена названия обязательной колонки в источнике должна вызывать ошибку."""
+        contract = validator.load_contract('sales')
+        # Ожидаем: 'дата', 'клиент'
+        # Пришло: 'дата', 'покупатель' (переименовали 'клиент' -> 'покупатель')
+        row = {
+            'data': '01.12.25',
+            'pokupatel': 'Иванов', # slugify('покупатель')
+            'produkt': 'Товар'
+        }
+        
+        errors = validator.validate_row(row, contract, 0)
+        
+        # Должны получить ошибку, что нет поля 'клиент'
+        client_errors = [e for e in errors if e.column == 'клиент']
+        assert len(client_errors) > 0
+        assert client_errors[0].error_type == 'MISSING_REQUIRED'
+        
+        # 'покупатель' просто игнорируется (валидатор проверяет только то, что в контракте)
+
 
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])

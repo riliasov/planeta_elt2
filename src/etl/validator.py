@@ -10,6 +10,7 @@ log = logging.getLogger('validator')
 
 
 from pydantic import BaseModel, Field, field_validator
+from src.utils.helpers import slugify
 
 # Removed dataclass decorator as we are moving to Pydantic
 class ValidationError(BaseModel):
@@ -81,7 +82,13 @@ class ContractValidator:
             default = col_spec.get('default')
             formats = col_spec.get('format')
             
-            value = row.get(col_name)
+            # Try direct lookup first, then slugified
+            if col_name in row:
+                value = row[col_name]
+            else:
+                slug_name = slugify(col_name)
+                # Handle possible duplicate suffixes (though we usually validate canonical name)
+                value = row.get(slug_name)
             
             # Проверка обязательности
             if required and self._is_empty(value):
