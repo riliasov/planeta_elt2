@@ -12,22 +12,24 @@ Google Sheets → CDC/Fast Loader → staging (*_cur, *_hst)
 ```
 
 ## Компоненты
-
 | Файл | Назначение |
 |------|------------|
-| `run_pipeline.py` | Главный скрипт |
-| `cdc_loader.py` | Инкрементальная загрузка (по умолчанию) |
-| `fast_loader.py` | Full Refresh |
-| `transform_to_public.py` | Трансформация |
-| `src/cdc.py` | CDC логика (хеширование) |
+| `src/main.py` | Главный скрипт (EntryPoint) |
+| `src/etl/pipeline.py` | Оркестратор ELT, управление процессом |
+| `src/etl/cdc_processor.py` | Логика инкрементальной загрузки |
+| `dashboard.py` | UI Dashboard (Streamlit) |
+| `src/etl/validator.py` | Валидация контрактов данных |
 
 ## Использование
 ```bash
 # Стандартный запуск (CDC)
-python run_pipeline.py
+python src/main.py
 
 # Full Refresh
-python run_pipeline.py --full-refresh
+python src/main.py --full-refresh
+
+# Dashboard
+streamlit run dashboard.py
 ```
 
 ## Scheduler
