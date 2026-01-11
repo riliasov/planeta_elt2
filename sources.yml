@@ -3,7 +3,6 @@ description: >
   Конфигурация Google Sheets -> Supabase.
   Единая стратегия sync: upsert + row_hash.
   Хеши вычисляются в Python.
-  Автоматический monthly backfill отключён.
   Первая строка каждого указанного range считается заголовком.
 
 defaults:
@@ -173,6 +172,13 @@ spreadsheets:
         compute_row_hash: false
         date_columns: []
 
+datamarts:
+  - id: client_balances
+    view: analytics.v_client_balances
+    spreadsheet_id: "1-kEt2r-mzqI6PmtFqcFaS7XVAPdlde5FxYMv4DXwd94"
+    gid: "1868616984"
+    description: "Витрина балансов клиентов"
+
 helpers:
   python_hashing:
     recommended: true
@@ -180,7 +186,3 @@ helpers:
       - compute_row_hash_locally: true
       - compare_hash_sets: true
       - hard_delete_by_hash_difference: true
-
-manual_backfill:
-  enabled: false
-  note: "Автоматический monthly backfill отключён. Ручной перенос выполняется оператором."

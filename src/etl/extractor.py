@@ -39,9 +39,9 @@ class GSheetsExtractor:
             # Drive API для получения modifiedTime
             self.drive_service = build('drive', 'v3', credentials=creds, cache_discovery=False)
             
-            log.info("Google Service Account authenticated successfully (Sheets + Drive).")
+            log.info("Успешная авторизация в Google Services (Sheets + Drive).")
         except Exception as e:
-            log.error(f"Failed to authenticate with Google: {e}")
+            log.error(f"Ошибка авторизации в Google: {e}")
             raise
 
     def get_modified_time(self, spreadsheet_id: str) -> Optional[datetime]:
@@ -54,57 +54,52 @@ class GSheetsExtractor:
             
             modified_str = file_metadata.get('modifiedTime')
             if modified_str:
-                # Parse ISO format: 2024-01-15T12:30:00.000Z
                 return datetime.fromisoformat(modified_str.replace('Z', '+00:00'))
             return None
         except Exception as e:
-            log.warning(f"Could not get modifiedTime for {spreadsheet_id}: {e}")
+            log.warning(f"Не удалось получить modifiedTime для {spreadsheet_id}: {e}")
             return None
 
     def is_spreadsheet_modified(self, spreadsheet_id: str) -> bool:
         """Проверяет, изменился ли spreadsheet с последнего запроса."""
         current_time = self.get_modified_time(spreadsheet_id)
         if not current_time:
-            return True  # Если не смогли получить — считаем что надо загрузить
+            return True
         
         cached_time = _modification_cache.get(spreadsheet_id)
         if not cached_time:
-            # Первый запрос — сохраняем и загружаем
             _modification_cache[spreadsheet_id] = current_time
             return True
         
         if current_time > cached_time:
-            # Изменился — обновляем кэш
             _modification_cache[spreadsheet_id] = current_time
-            log.info(f"Spreadsheet {spreadsheet_id[:8]}... modified since last sync")
+            log.info(f"Таблица {spreadsheet_id[:8]}... была изменена.")
             return True
         else:
-            log.info(f"Spreadsheet {spreadsheet_id[:8]}... not modified, skipping")
+            log.info(f"Таблица {spreadsheet_id[:8]}... не изменялась, пропуск.")
             return False
 
     async def extract_sheet_data(self, spreadsheet_id: str, gid: str, range_name: str, target_table: str, check_modified: bool = False) -> Tuple[List[str], List[List[Any]]]:
         """Извлекает данные из конкретного листа с повторными попытками."""
         
-        # Опциональная проверка modifiedTime для инкрементальной оптимизации
         if check_modified and not self.is_spreadsheet_modified(spreadsheet_id):
-            log.info(f"Skipping {target_table} — spreadsheet not modified")
+            log.info(f"Пропуск {target_table} — изменений в таблице не обнаружено.")
             return [], []
         
-        log.info(f"Extracting {target_table} from {spreadsheet_id} (gid={gid})")
+        log.info(f"Извлечение {target_table} из {spreadsheet_id[:8]}... (gid={gid})")
         
         for attempt in range(3):
             try:
-                # Re-auth if needed? gspread handles token refresh usually.
                 sh = self.gc.open_by_key(spreadsheet_id)
                 ws = sh.get_worksheet_by_id(int(gid))
                 
                 if not ws:
-                    raise ValueError(f"Worksheet with GID {gid} not found in {spreadsheet_id}")
+                    raise ValueError(f"Лист с GID {gid} не найден в таблице {spreadsheet_id}")
 
                 data = ws.get(range_name)
                 
                 if not data:
-                    log.warning(f"No data found for {target_table}")
+                    log.warning(f"Данные не найдены для {target_table}")
                     return [], []
 
                 headers = data[0]
@@ -116,17 +111,16 @@ class GSheetsExtractor:
             except Exception as e:
                 if '429' in str(e):
                     sleep_time = (attempt + 1) * 5
-                    log.warning(f"Quota exceeded for {target_table}, retrying in {sleep_time}s...")
+                    log.warning(f"Лимит квот исчерпан для {target_table}, повтор через {sleep_time}с...")
                     import time
                     time.sleep(sleep_time)
                 else:
-                    log.error(f"Error extracting data for {target_table}: {e}")
+                    log.error(f"Ошибка при извлечении данных для {target_table}: {e}")
                     raise
-        raise Exception(f"Failed to extract {target_table} after retries")
+        raise Exception(f"Не удалось извлечь {target_table} после всех попыток.")
 
     def _normalize_headers(self, headers: List[str], table_name: str) -> List[str]:
         """Превращает заголовки Sheet в валидные имена колонок Postgres."""
-        # Особый случай для rates (там даты в заголовках) - сохраняем логику из fast_loader.py
         if table_name == 'rates':
             return [f"col_{i}" for i, _ in enumerate(headers)]
 

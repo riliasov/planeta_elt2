@@ -12,9 +12,52 @@ class SchemaManager:
         self.extractor = GSheetsExtractor()
 
     async def deploy_meta_tables(self):
-        """Создает системные таблицы (logs, runs, stats)."""
+        """Создает системные таблицы (logs, runs, stats) и базовую структуру схем."""
         ddl = """
-        -- Таблица логов валидации
+        -- 1. СХЕМЫ
+        CREATE SCHEMA IF NOT EXISTS raw;
+        CREATE SCHEMA IF NOT EXISTS staging;
+        CREATE SCHEMA IF NOT EXISTS "references";
+        CREATE SCHEMA IF NOT EXISTS analytics;
+
+        -- 2. ТАБЛИЦЫ REFERENCES
+        CREATE TABLE IF NOT EXISTS "references".employees (
+            id SERIAL PRIMARY KEY,
+            full_name TEXT UNIQUE NOT NULL,
+            role TEXT,
+            aliases TEXT[],
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS "references".products (
+            id SERIAL PRIMARY KEY,
+            name TEXT UNIQUE NOT NULL,
+            category TEXT,
+            aliases TEXT[],
+            base_price NUMERIC,
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS "references".expense_categories (
+            id SERIAL PRIMARY KEY,
+            name TEXT UNIQUE NOT NULL,
+            parent_category TEXT,
+            aliases TEXT[],
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        );
+
+        -- 3. ТАБЛИЦЫ RAW
+        CREATE TABLE IF NOT EXISTS raw.sheets_dump (
+            id BIGSERIAL PRIMARY KEY,
+            spreadsheet_id TEXT NOT NULL,
+            sheet_name TEXT NOT NULL,
+            data JSONB NOT NULL,
+            extracted_at TIMESTAMPTZ DEFAULT NOW()
+        );
+
+        -- 4. СИСТЕМНЫЕ ТАБЛИЦЫ
         CREATE TABLE IF NOT EXISTS validation_logs (
             id BIGSERIAL PRIMARY KEY,
             run_id UUID NOT NULL,
@@ -28,7 +71,6 @@ class SchemaManager:
         );
         CREATE INDEX IF NOT EXISTS idx_validation_logs_run_id ON validation_logs(run_id);
         
-        -- Таблица истории запусков ELT
         CREATE TABLE IF NOT EXISTS elt_runs (
             run_id UUID PRIMARY KEY,
             started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -44,7 +86,6 @@ class SchemaManager:
         );
         CREATE INDEX IF NOT EXISTS idx_elt_runs_started_at ON elt_runs(started_at DESC);
         
-        -- Статистика по таблицам за каждый run
         CREATE TABLE IF NOT EXISTS elt_table_stats (
             id BIGSERIAL PRIMARY KEY,
             run_id UUID NOT NULL REFERENCES elt_runs(run_id) ON DELETE CASCADE,
@@ -60,9 +101,9 @@ class SchemaManager:
         );
         CREATE INDEX IF NOT EXISTS idx_elt_table_stats_run_id ON elt_table_stats(run_id);
         """
-        log.info("Deploying meta tables...")
+        log.info("Развертывание мета-таблиц и схем (layered architecture)...")
         await DBConnection.execute(ddl)
-        log.info("Meta tables deployed.")
+        log.info("Мета-таблицы и базовые схемы развернуты.")
 
     async def deploy_staging_tables(self, use_staging_schema: bool = False):
         """Пересоздает staging таблицы на основе заголовков из Sheets.

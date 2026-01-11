@@ -6,7 +6,7 @@ WITH deleted_sales_cur AS (
     UPDATE sales s
     SET deleted_at = NOW(), is_deleted = TRUE
     WHERE s.source = 'sales_cur'
-      AND s.row_hash NOT IN (SELECT "__row_hash" FROM sales_cur WHERE "__row_hash" IS NOT NULL)
+      AND s.row_hash NOT IN (SELECT "__row_hash" FROM staging.sales_cur WHERE "__row_hash" IS NOT NULL)
       AND s.is_deleted = FALSE
     RETURNING legacy_id
 ),
@@ -14,7 +14,7 @@ deleted_sales_hst AS (
     UPDATE sales s
     SET deleted_at = NOW(), is_deleted = TRUE
     WHERE s.source = 'sales_hst'
-      AND s.row_hash NOT IN (SELECT "__row_hash" FROM sales_hst WHERE "__row_hash" IS NOT NULL)
+      AND s.row_hash NOT IN (SELECT "__row_hash" FROM staging.sales_hst WHERE "__row_hash" IS NOT NULL)
       AND s.is_deleted = FALSE
     RETURNING legacy_id
 )
@@ -27,14 +27,16 @@ SELECT
 WITH deleted_trainings_cur AS (
     UPDATE schedule s
     SET deleted_at = NOW(), is_deleted = TRUE
-    WHERE s.row_hash NOT IN (SELECT "__row_hash" FROM trainings_cur WHERE "__row_hash" IS NOT NULL)
+    WHERE s.source = 'trainings_cur'
+      AND s.row_hash NOT IN (SELECT "__row_hash" FROM staging.trainings_cur WHERE "__row_hash" IS NOT NULL)
       AND s.is_deleted = FALSE
     RETURNING legacy_id 
 ), 
 deleted_trainings_hst AS (
     UPDATE schedule s
     SET deleted_at = NOW(), is_deleted = TRUE
-    WHERE s.row_hash NOT IN (SELECT "__row_hash" FROM trainings_hst WHERE "__row_hash" IS NOT NULL)
+    WHERE s.source = 'trainings_hst'
+      AND s.row_hash NOT IN (SELECT "__row_hash" FROM staging.trainings_hst WHERE "__row_hash" IS NOT NULL)
       AND s.is_deleted = FALSE
     RETURNING legacy_id
 )
@@ -48,7 +50,11 @@ SELECT
 WITH deleted_clients_cur AS (
     UPDATE clients c
     SET deleted_at = NOW(), is_deleted = TRUE, status = 'deleted'
-    WHERE c.row_hash NOT IN (SELECT "__row_hash" FROM clients_cur WHERE "__row_hash" IS NOT NULL)
+    WHERE c.row_hash NOT IN (
+        SELECT "__row_hash" FROM staging.clients_cur WHERE "__row_hash" IS NOT NULL
+        UNION ALL
+        SELECT "__row_hash" FROM staging.clients_hst WHERE "__row_hash" IS NOT NULL
+    )
       AND c.is_deleted = FALSE
     RETURNING legacy_id
 )

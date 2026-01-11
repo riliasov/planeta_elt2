@@ -16,10 +16,9 @@ class Transformer:
     
     async def run(self, tables: list[str] = None):
         """Запускает трансформации."""
-        log.info("Starting transformations...")
+        log.info("Начало этапа трансформации данных...")
         
         # Порядок важен: Clients -> Schedule -> Sales (dependencies)
-        # Но у нас жестко заданы SQL файлы
         files_to_run = [
             'transform_clients.sql',
             'transform_schedule.sql', 
@@ -31,37 +30,36 @@ class Transformer:
         for filename in files_to_run:
             file_path = SQL_DIR / filename
             if not file_path.exists():
-                log.error(f"SQL file not found: {file_path}")
+                log.error(f"SQL файл не найден: {file_path}")
                 continue
                 
             try:
-                log.info(f"Executing {filename}...")
+                log.info(f"Выполнение {filename}...")
                 with open(file_path, 'r', encoding='utf-8') as f:
                     sql = f.read()
                     
                 await DBConnection.execute(sql)
-                log.info(f"✓ Successfully executed {filename}")
+                log.info(f"✓ {filename} успешно выполнен")
                 success_count += 1
                 
             except Exception as e:
-                log.error(f"✗ Failed to execute {filename}: {e}")
-                # Если упали clients, то sales тоже могут упасть. Но пробуем дальше.
+                log.error(f"✗ Ошибка при выполнении {filename}: {e}")
 
         # Запуск Cleanup / Soft Delete
         try:
-            log.info("Running cleanup (soft delete)...")
+            log.info("Запуск очистки (soft delete)...")
             cleanup_path = SQL_DIR / 'cleanup.sql'
             if cleanup_path.exists():
                 with open(cleanup_path, 'r', encoding='utf-8') as f:
                     sql = f.read()
                 await DBConnection.execute(sql)
-                log.info("✓ Cleanup completed")
+                log.info("✓ Очистка завершена")
             else:
-                log.warning("cleanup.sql not found")
+                log.warning("Файл cleanup.sql не найден")
         except Exception as e:
-             log.error(f"✗ Cleanup failed: {e}")
+             log.error(f"✗ Ошибка при очистке: {e}")
 
-        log.info(f"Transformation finished. Scripts executed: {success_count}/{len(files_to_run)}")
+        log.info(f"Трансформация завершена. Скриптов выполнено: {success_count}/{len(files_to_run)}")
         return success_count, 0
 
 async def run_all_transformations():

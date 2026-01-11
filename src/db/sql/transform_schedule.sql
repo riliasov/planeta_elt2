@@ -24,10 +24,10 @@ SELECT DISTINCT ON (legacy_id)
     NULLIF(TRIM("tip"::text), '') as type,
     NULLIF(TRIM("kategoriya"::text), '') as category,
     NULLIF(TRIM("kommentariy"::text), '') as comment,
-    (SELECT id FROM clients c WHERE c.name = trainings_cur.klient LIMIT 1) as client_id
-FROM trainings_cur
+    (SELECT id FROM clients c WHERE c.name = staging.trainings_cur.klient LIMIT 1) as client_id
+FROM staging.trainings_cur
 WHERE NULLIF(TRIM("data"::text), '') IS NOT NULL
-  AND (SELECT id FROM clients c WHERE c.name = trainings_cur.klient LIMIT 1) IS NOT NULL
+  AND (SELECT id FROM clients c WHERE c.name = staging.trainings_cur.klient LIMIT 1) IS NOT NULL
 ORDER BY legacy_id
 ON CONFLICT (legacy_id) DO UPDATE SET
     row_hash = EXCLUDED.row_hash,
@@ -40,6 +40,8 @@ ON CONFLICT (legacy_id) DO UPDATE SET
     category = EXCLUDED.category,
     comment = EXCLUDED.comment,
     client_id = EXCLUDED.client_id,
+    is_deleted = FALSE,
+    deleted_at = NULL,
     updated_at = NOW();
 
 -- === ИСТОРИЧЕСКИЕ ТРЕНИРОВКИ ===
@@ -64,10 +66,10 @@ SELECT DISTINCT ON (legacy_id)
     NULLIF(TRIM("tip"::text), '') as type,
     NULLIF(TRIM("kategoriya"::text), '') as category,
     NULLIF(TRIM("kommentariy"::text), '') as comment,
-    (SELECT id FROM clients c WHERE c.name = trainings_hst.klient LIMIT 1) as client_id
-FROM trainings_hst
+    (SELECT id FROM clients c WHERE c.name = staging.trainings_hst.klient LIMIT 1) as client_id
+FROM staging.trainings_hst
 WHERE NULLIF(TRIM("data"::text), '') IS NOT NULL
-  AND (SELECT id FROM clients c WHERE c.name = trainings_hst.klient LIMIT 1) IS NOT NULL
+  AND (SELECT id FROM clients c WHERE c.name = staging.trainings_hst.klient LIMIT 1) IS NOT NULL
 ORDER BY legacy_id
 ON CONFLICT (legacy_id) DO UPDATE SET
     row_hash = EXCLUDED.row_hash,
@@ -80,4 +82,6 @@ ON CONFLICT (legacy_id) DO UPDATE SET
     category = EXCLUDED.category,
     comment = EXCLUDED.comment,
     client_id = EXCLUDED.client_id,
+    is_deleted = FALSE,
+    deleted_at = NULL,
     updated_at = NOW();

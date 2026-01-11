@@ -23,7 +23,7 @@ SELECT DISTINCT ON (legacy_id)
     0 as balance,
     0 as debt,
     NULLIF(TRIM("tip"::text), '') as status
-FROM clients_cur
+FROM staging.clients_cur
 WHERE NULLIF(TRIM("klient"::text), '') IS NOT NULL
 ORDER BY legacy_id
 ON CONFLICT (legacy_id) DO UPDATE SET
@@ -34,6 +34,8 @@ ON CONFLICT (legacy_id) DO UPDATE SET
     child_name = EXCLUDED.child_name,
     child_dob = EXCLUDED.child_dob,
     status = EXCLUDED.status,
+    is_deleted = FALSE,
+    deleted_at = NULL,
     updated_at = NOW();
 
 

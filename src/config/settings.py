@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     
     # App
     log_level: str = "INFO"
+    use_staging_schema: bool = True
     
     # Sources config
     _sources_config: Dict[str, Any] = {}

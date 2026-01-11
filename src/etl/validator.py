@@ -226,6 +226,6 @@ def validate_staging_table(table_name: str, entity_name: str, rows: List[Dict[st
         log.warning(f"⚠ {table_name}: {result.valid_rows}/{result.total_rows} валидных строк ({result.error_rate:.1%} ошибок)")
         # Логируем первые 5 ошибок
         for err in result.errors[:5]:
-            log.warning(f"  Строка {err.row_index}: {err.message}")
+            log.warning(f"  [Строка {err.row_index}]: {err.message}")
     
     return result

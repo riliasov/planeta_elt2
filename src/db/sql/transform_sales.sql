@@ -31,10 +31,10 @@ SELECT DISTINCT ON (legacy_id)
     COALESCE(NULLIF(regexp_replace("terminal"::text, '[^0-9,.-]', '', 'g'), '')::numeric, 0) as terminal,
     COALESCE(NULLIF(regexp_replace("vdolg"::text, '[^0-9,.-]', '', 'g'), '')::numeric, 0) as debt,
     NULLIF(TRIM("kommentariy"::text), '') as comment,
-    (SELECT id FROM clients c WHERE c.name = sales_cur."klient"::text LIMIT 1) as client_id
-FROM sales_cur
+    (SELECT id FROM clients c WHERE c.name = staging.sales_cur."klient"::text LIMIT 1) as client_id
+FROM staging.sales_cur
 WHERE NULLIF(TRIM("produkt"::text), '') IS NOT NULL
-  AND (SELECT id FROM clients c WHERE c.name = sales_cur."klient"::text LIMIT 1) IS NOT NULL
+  AND (SELECT id FROM clients c WHERE c.name = staging.sales_cur."klient"::text LIMIT 1) IS NOT NULL
 ORDER BY legacy_id
 ON CONFLICT (legacy_id) DO UPDATE SET
     row_hash = EXCLUDED.row_hash,
@@ -53,6 +53,8 @@ ON CONFLICT (legacy_id) DO UPDATE SET
     debt = EXCLUDED.debt,
     comment = EXCLUDED.comment,
     client_id = EXCLUDED.client_id,
+    is_deleted = FALSE,
+    deleted_at = NULL,
     updated_at = NOW();
 
 -- === ИСТОРИЧЕСКИЕ ПРОДАЖИ ===
@@ -84,10 +86,10 @@ SELECT DISTINCT ON (legacy_id)
     COALESCE(NULLIF(regexp_replace("terminal"::text, '[^0-9,.-]', '', 'g'), '')::numeric, 0) as terminal,
     COALESCE(NULLIF(regexp_replace("vdolg"::text, '[^0-9,.-]', '', 'g'), '')::numeric, 0) as debt,
     NULLIF(TRIM("kommentariy"::text), '') as comment,
-    (SELECT id FROM clients c WHERE c.name = sales_hst."klient"::text LIMIT 1) as client_id
-FROM sales_hst
+    (SELECT id FROM clients c WHERE c.name = staging.sales_hst."klient"::text LIMIT 1) as client_id
+FROM staging.sales_hst
 WHERE NULLIF(TRIM("produkt"::text), '') IS NOT NULL
-  AND (SELECT id FROM clients c WHERE c.name = sales_hst."klient"::text LIMIT 1) IS NOT NULL
+  AND (SELECT id FROM clients c WHERE c.name = staging.sales_hst."klient"::text LIMIT 1) IS NOT NULL
 ORDER BY legacy_id
 ON CONFLICT (legacy_id) DO UPDATE SET
     row_hash = EXCLUDED.row_hash,
@@ -106,4 +108,6 @@ ON CONFLICT (legacy_id) DO UPDATE SET
     debt = EXCLUDED.debt,
     comment = EXCLUDED.comment,
     client_id = EXCLUDED.client_id,
+    is_deleted = FALSE,
+    deleted_at = NULL,
     updated_at = NOW();
