@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## [0.5.0] — 2026-01-11 (Security Audit & Refactoring)
+
+### Добавлено
+- **Security Validation**: Строгая проверка идентификаторов в `DataLoader` (защита от SQL Injection).
+- **Test Coverage**: Внедрены unit-тесты безопасности (`tests/test_loader_security.py`) и E2E тесты пайплайна (`tests/test_pipeline_e2e.py`).
+- **TableProcessor**: Выделенный класс для изоляции логики обработки таблиц (Extract -> Validate -> Load).
+
+### Изменено
+- **Refactoring Validator**: Полный отказ от ручной валидации типов в пользу `Pydantic v2` и динамических моделей.
+- **Refactoring Pipeline**: `ELTPipeline` переведен в режим чистого оркестратора.
+- **Refactoring Loader**: Устранено дублирование кода подготовки строк (методы `_prepare_row`, `_validate_identifier`).
+- **Data Integrity**: Исправлена ошибка хеширования для валютных полей.
+
 ## [0.4.0] — 2026-01-11 (PK CDC Integration)
 
 ### Добавлено

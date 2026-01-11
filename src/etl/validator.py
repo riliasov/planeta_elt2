@@ -3,16 +3,12 @@ import json
 import re
 import logging
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Type, Union
+from pydantic import BaseModel, Field, create_model, validator, ValidationError as PydanticValidationError, AliasChoices
+from src.utils.helpers import slugify
 
 log = logging.getLogger('validator')
 
-
-from pydantic import BaseModel, Field, field_validator
-from src.utils.helpers import slugify
-
-# Removed dataclass decorator as we are moving to Pydantic
 class ValidationError(BaseModel):
     """Описание ошибки валидации."""
     row_index: int
@@ -20,7 +16,6 @@ class ValidationError(BaseModel):
     value: Any
     error_type: str
     message: str
-
 
 class ValidationResult(BaseModel):
     """Результат валидации набора данных."""
@@ -35,11 +30,9 @@ class ValidationResult(BaseModel):
             return 0.0
         return (self.total_rows - self.valid_rows) / self.total_rows
 
-
 class ContractValidator:
-    """Валидатор на основе JSON-контрактов."""
+    """Валидатор на основе JSON-контрактов и динамических Pydantic моделей."""
     
-    # Паттерны для парсинга дат
     DATE_PATTERNS = {
         'DD.MM.YYYY': r'^\d{2}\.\d{2}\.\d{4}$',
         'DD.MM.YY': r'^\d{2}\.\d{2}\.\d{2}$',
@@ -47,15 +40,15 @@ class ContractValidator:
         'DD.MM': r'^\d{2}\.\d{2}$',
         'YYYY-MM-DD': r'^\d{4}-\d{2}-\d{2}$',
     }
-    
     TIME_PATTERN = r'^\d{1,2}:\d{2}(:\d{2})?$'
-    
+
     def __init__(self, contracts_dir: Optional[Path] = None):
         if contracts_dir is None:
             contracts_dir = Path(__file__).parent.parent / 'contracts'
         self.contracts_dir = contracts_dir
         self._contracts_cache: Dict[str, dict] = {}
-    
+        self._models_cache: Dict[str, Type[BaseModel]] = {}
+
     def load_contract(self, entity_name: str) -> dict:
         """Загружает контракт по имени сущности."""
         if entity_name in self._contracts_cache:
@@ -70,52 +63,112 @@ class ContractValidator:
         
         self._contracts_cache[entity_name] = contract
         return contract
-    
+
+    def _get_model_for_contract(self, entity_name: str) -> Type[BaseModel]:
+        """Динамически создает Pydantic модель для контракта."""
+        if entity_name in self._models_cache:
+            return self._models_cache[entity_name]
+
+        contract = self.load_contract(entity_name)
+        fields = {}
+        
+        for col in contract.get('columns', []):
+            name = col['name']
+            col_type = col.get('type', 'string')
+            required = col.get('required', False)
+            default = col.get('default')
+
+            # Определение типа для Pydantic
+            py_type: Any = Any
+            if col_type == 'integer':
+                py_type = Optional[int] if not required else int
+            elif col_type == 'string':
+                py_type = Optional[str] if not required else str
+            
+            # Для сложных типов (date, money, time) пока оставляем Any и проверяем валидаторами
+            # чтобы сохранить специфическую логику очистки/парсинга
+            
+            # Используем AliasChoices для поддержки и оригинального имени, и слагифицированного
+            slug_name = slugify(name)
+            if slug_name != name:
+                fields[name] = (py_type, Field(default if not required else ..., validation_alias=AliasChoices(name, slug_name)))
+            else:
+                fields[name] = (py_type, default if not required else ...)
+
+        # Создаем модель
+        model = create_model(f"Dynamic_{entity_name}", **fields)
+        self._models_cache[entity_name] = model
+        return model
+
     def validate_row(self, row: Dict[str, Any], contract: dict, row_index: int) -> List[ValidationError]:
-        """Валидирует одну строку по контракту."""
+        """Валидирует одну строку. Частично через Pydantic, частично через кастомную логику (для сложных типов)."""
         errors = []
         
+        # 1. Pydantic валидация (базовые типы)
+        model = self._get_model_for_contract(contract.get('name', 'unknown'))
+        try:
+            # Используем model_validate или parse_obj (в зависимости от версии)
+            model(**row)
+        except PydanticValidationError as e:
+            for error in e.errors():
+                # Маппинг ошибок Pydantic в наш формат
+                col = error['loc'][0]
+                errors.append(ValidationError(
+                    row_index=row_index,
+                    column=str(col),
+                    value=row.get(str(col)),
+                    error_type=error['type'],
+                    message=error['msg']
+                ))
+
+        # 2. Кастомная валидация сложных типов (date, money, time), которые Pydantic может пропустить
         for col_spec in contract.get('columns', []):
             col_name = col_spec['name']
             col_type = col_spec.get('type', 'string')
-            required = col_spec.get('required', False)
-            default = col_spec.get('default')
             formats = col_spec.get('format')
             
-            # Try direct lookup first, then slugified
-            if col_name in row:
-                value = row[col_name]
-            else:
-                slug_name = slugify(col_name)
-                # Handle possible duplicate suffixes (though we usually validate canonical name)
-                value = row.get(slug_name)
-            
-            # Проверка обязательности
-            if required and self._is_empty(value):
-                if default is None:
-                    errors.append(ValidationError(
-                        row_index=row_index,
-                        column=col_name,
-                        value=value,
-                        error_type='MISSING_REQUIRED',
-                        message=f"Обязательное поле '{col_name}' пустое"
-                    ))
+            value = row.get(col_name) or row.get(slugify(col_name))
+            if value is None or (isinstance(value, str) and not value.strip()):
                 continue
+
+            # Дополнительные проверки для специфических типов
+            err_msg = None
+            err_type = None
+            str_val = str(value).strip()
+
+            if col_type == 'money':
+                cleaned = re.sub(r'[^\d,.-]', '', str_val)
+                try:
+                    if not cleaned: raise ValueError()
+                    float(cleaned.replace(',', '.'))
+                except ValueError:
+                    err_msg, err_type = f"Значение '{value}' не является суммой", "INVALID_MONEY"
             
-            # Пропускаем валидацию типа для пустых необязательных полей
-            if self._is_empty(value):
-                continue
+            elif col_type == 'date':
+                if not self._validate_date_format(str_val, formats):
+                    err_msg, err_type = f"Дата '{value}' не соответствует формату {formats}", "INVALID_DATE"
             
-            # Валидация типа
-            type_error = self._validate_type(value, col_type, formats, col_name, row_index)
-            if type_error:
-                errors.append(type_error)
-        
+            elif col_type == 'time':
+                if not re.match(self.TIME_PATTERN, str_val):
+                    err_msg, err_type = f"Время '{value}' не соответствует формату HH:MM", "INVALID_TIME"
+
+            if err_msg:
+                errors.append(ValidationError(
+                    row_index=row_index,
+                    column=col_name,
+                    value=value,
+                    error_type=err_type,
+                    message=err_msg
+                ))
+
         return errors
-    
+
     def validate_dataset(self, rows: List[Dict[str, Any]], entity_name: str) -> ValidationResult:
         """Валидирует весь набор данных."""
         contract = self.load_contract(entity_name)
+        # Сохраняем имя сущности в контракте для _get_model_for_contract
+        contract['name'] = entity_name
+        
         all_errors = []
         valid_count = 0
         
@@ -132,76 +185,10 @@ class ContractValidator:
             valid_rows=valid_count,
             errors=all_errors
         )
-    
-    def _is_empty(self, value: Any) -> bool:
-        """Проверяет, является ли значение пустым."""
-        if value is None:
-            return True
-        if isinstance(value, str) and value.strip() == '':
-            return True
-        return False
-    
-    def _validate_type(self, value: Any, col_type: str, formats: Any, col_name: str, row_index: int) -> Optional[ValidationError]:
-        """Валидирует тип значения."""
-        str_value = str(value).strip()
-        
-        if col_type == 'string':
-            return None  # Любое значение валидно как строка
-        
-        elif col_type == 'integer':
-            try:
-                int(str_value)
-            except ValueError:
-                return ValidationError(
-                    row_index=row_index,
-                    column=col_name,
-                    value=value,
-                    error_type='INVALID_INTEGER',
-                    message=f"Значение '{value}' не является целым числом"
-                )
-        
-        elif col_type == 'money':
-            # Убираем пробелы, буквы и проверяем число
-            cleaned = re.sub(r'[^\d,.-]', '', str_value)
-            if cleaned:
-                try:
-                    float(cleaned.replace(',', '.'))
-                except ValueError:
-                    return ValidationError(
-                        row_index=row_index,
-                        column=col_name,
-                        value=value,
-                        error_type='INVALID_MONEY',
-                        message=f"Значение '{value}' не является суммой"
-                    )
-        
-        elif col_type == 'date':
-            if not self._validate_date_format(str_value, formats):
-                return ValidationError(
-                    row_index=row_index,
-                    column=col_name,
-                    value=value,
-                    error_type='INVALID_DATE',
-                    message=f"Дата '{value}' не соответствует формату {formats}"
-                )
-        
-        elif col_type == 'time':
-            if not re.match(self.TIME_PATTERN, str_value):
-                return ValidationError(
-                    row_index=row_index,
-                    column=col_name,
-                    value=value,
-                    error_type='INVALID_TIME',
-                    message=f"Время '{value}' не соответствует формату HH:MM"
-                )
-        
-        return None
-    
+
     def _validate_date_format(self, value: str, formats: Any) -> bool:
         """Проверяет соответствие даты одному из форматов."""
-        # Убираем возможный префикс дня недели (пн, вт, ...)
         cleaned = re.sub(r'^[а-яa-z]{2,3}\s+', '', value, flags=re.IGNORECASE).strip()
-        
         if formats is None:
             formats = list(self.DATE_PATTERNS.keys())
         elif isinstance(formats, str):
@@ -211,9 +198,7 @@ class ContractValidator:
             pattern = self.DATE_PATTERNS.get(fmt)
             if pattern and re.match(pattern, cleaned):
                 return True
-        
         return False
-
 
 def validate_staging_table(table_name: str, entity_name: str, rows: List[Dict[str, Any]]) -> ValidationResult:
     """Утилита для валидации staging таблицы."""

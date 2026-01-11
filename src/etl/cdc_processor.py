@@ -60,8 +60,8 @@ class CDCProcessor:
     
     def get_stats(self) -> Dict[str, int]:
         return {
-            'insert': len(self.to_insert),
-            'update': len(self.to_update),
-            'delete': len(self.to_delete),
+            'inserted': len(self.to_insert),
+            'updated': len(self.to_update),
+            'deleted': len(self.to_delete),
             'unchanged': self.unchanged
         }
