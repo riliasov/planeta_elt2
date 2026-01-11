@@ -56,7 +56,7 @@ spreadsheets:
         gid: "294381083"
         description: "Продажи_hst"
         range: "A1:ZZ"
-        target_table: sales_hst
+        target_table: stg_gsheets.sales_hst
         mode: upsert
         pk: "record_id"
         compute_row_hash: true
@@ -72,7 +72,7 @@ spreadsheets:
         gid: "1318679629"
         description: "Клиент_hst"
         range: "B4:ZZ"
-        target_table: clients_hst
+        target_table: stg_gsheets.clients_hst
         mode: upsert
         pk: "record_id"
         compute_row_hash: true
@@ -89,7 +89,7 @@ spreadsheets:
         gid: "678151176"
         description: "Расходы_hst"
         range: "A1:ZZ"
-        target_table: expenses_hst
+        target_table: stg_gsheets.expenses_hst
         mode: upsert
         pk: "record_id"
         compute_row_hash: true
@@ -105,7 +105,7 @@ spreadsheets:
         gid: "199220541"
         description: "Ставки (справочник)"
         range: "A1:ZZ"
-        target_table: rates
+        target_table: stg_gsheets.rates
         mode: replace
         pk: "record_id"
         compute_row_hash: false
@@ -122,7 +122,7 @@ spreadsheets:
         gid: "1195769572"
         description: "Тренировки_hst"
         range: "A1:ZZ"
-        target_table: trainings_hst
+        target_table: stg_gsheets.trainings_hst
         mode: upsert
         pk: "record_id"
         compute_row_hash: true
@@ -143,7 +143,7 @@ spreadsheets:
         gid: "389044927"
         description: "Клиент_cur"
         range: "A2:ZZ"
-        target_table: clients_cur
+        target_table: stg_gsheets.clients
         mode: upsert
         pk: "record_id"
         compute_row_hash: true
@@ -159,7 +159,7 @@ spreadsheets:
         gid: "623132210"
         description: "Продажи_cur"
         range: "A2:ZZ"
-        target_table: sales_cur
+        target_table: stg_gsheets.sales
         mode: upsert
         pk: "record_id"
         compute_row_hash: true
@@ -176,7 +176,7 @@ spreadsheets:
         gid: "1856560934"
         description: "Тренировки_cur"
         range: "A1:ZZ"
-        target_table: trainings_cur
+        target_table: stg_gsheets.trainings
         mode: upsert
         pk: "record_id"
         compute_row_hash: true
@@ -196,7 +196,7 @@ spreadsheets:
         gid: "2069388990"
         description: "Расходы_cur"
         range: "A2:ZZ"
-        target_table: expenses_cur
+        target_table: stg_gsheets.expenses
         mode: upsert
         pk: "record_id"
         compute_row_hash: true
@@ -215,7 +215,7 @@ spreadsheets:
         gid: "1546502281"
         description: "Спр_Прайс"
         range: "A1:I40"
-        target_table: price_reference
+        target_table: stg_gsheets.price_reference
         mode: replace
         pk: "record_id"
         compute_row_hash: false

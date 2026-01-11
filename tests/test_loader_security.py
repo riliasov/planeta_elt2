@@ -8,7 +8,7 @@ def loader():
 
 def test_validate_identifier_valid(loader):
     """Тест валидных идентификаторов."""
-    valid_ids = ["users", "order_items", "v1_data", "field_123"]
+    valid_ids = ["users", "order_items", "v1_data", "field_123", "schema.table", "stg_gsheets.clients"]
     for ident in valid_ids:
         assert loader._validate_identifier(ident) == ident
 

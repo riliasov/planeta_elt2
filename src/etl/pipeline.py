@@ -81,7 +81,7 @@ class ELTPipeline:
             log.info(f"=== Пайплайн завершен за {duration:.2f} сек (статус: {status}) ===")
 
     async def _start_run(self, mode: str):
-        query = "INSERT INTO elt_runs (run_id, mode, status) VALUES ($1, $2, 'running')"
+        query = "INSERT INTO ops.elt_runs (run_id, mode, status) VALUES ($1, $2, 'running')"
         try:
             await DBConnection.execute(query, str(self.run_id), mode)
         except Exception as e:
@@ -89,7 +89,7 @@ class ELTPipeline:
 
     async def _finish_run(self, status: str, duration: float, error_message: Optional[str] = None):
         query = """
-            UPDATE elt_runs SET
+            UPDATE ops.elt_runs SET
                 finished_at = NOW(), status = $2, duration_seconds = $3,
                 tables_processed = $4, total_rows_synced = $5,
                 validation_errors = $6, error_message = $7
@@ -142,9 +142,11 @@ class ELTPipeline:
 
     def _is_in_scope(self, table: str, scope: str) -> bool:
         if scope == 'all': return True
-        is_cur = table.endswith('_cur')
         is_hst = table.endswith('_hst')
-        is_ref = table in ('rates', 'price_reference')
+        is_ref = any(ref in table for ref in ['rates', 'price_reference'])
+        
+        # Current tables are those that are NOT history and NOT reference
+        is_cur = not is_hst and not is_ref
         
         if scope == 'current': return is_cur
         if scope == 'historical': return is_hst or is_ref
@@ -167,7 +169,7 @@ class ELTPipeline:
 
     async def _log_table_stats(self, result: Dict[str, Any]):
         query = """
-            INSERT INTO elt_table_stats (
+            INSERT INTO ops.elt_table_stats (
                 run_id, table_name, rows_extracted, rows_inserted, 
                 rows_updated, rows_deleted, validation_errors, duration_ms
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)

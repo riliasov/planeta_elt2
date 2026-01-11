@@ -19,7 +19,7 @@ class TestPipelineE2E(unittest.IsolatedAsyncioTestCase):
                 "spreadsheet_123": {
                     "sheets": [
                         {
-                            "target_table": "clients_cur",
+                            "target_table": "stg_gsheets.clients",
                             "gid": 0,
                             "pk": "id"
                         }
@@ -67,8 +67,8 @@ class TestPipelineE2E(unittest.IsolatedAsyncioTestCase):
             
             # 4. Проверки
             print(f"DEBUG: Processor stats: {pipeline._run_stats}")
-            # Проверим детали для таблицы clients_cur
-            details = next((d for d in pipeline._table_run_details if d['table'] == 'clients_cur'), None)
+            # Проверим детали для таблицы stg_gsheets.clients
+            details = next((d for d in pipeline._table_run_details if d['table'] == 'stg_gsheets.clients'), None)
             if details and 'errors' in details:
                  print(f"DEBUG: Validation errors detail: {details['errors']}")
 

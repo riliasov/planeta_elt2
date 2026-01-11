@@ -26,7 +26,10 @@ class TableProcessor:
         mapping = sheet_cfg.get('column_mapping')
         pk_field = sheet_cfg.get('pk', '__row_hash')
         
-        contract_name = target_table.replace('_cur', '').replace('_hst', '')
+        # Убираем схему и суффиксы для поиска контракта
+        table_base = target_table.split('.')[-1]
+        contract_name = table_base.replace('_cur', '').replace('_hst', '')
+        
         if contract_name == 'trainings':
             contract_name = 'schedule'
             
@@ -96,7 +99,7 @@ class TableProcessor:
 
     async def _log_validation_errors(self, table_name: str, result: ValidationResult):
         query = """
-            INSERT INTO validation_logs (run_id, table_name, row_index, column_name, 
+            INSERT INTO ops.validation_logs (run_id, table_name, row_index, column_name, 
             invalid_value, error_type, message) VALUES ($1, $2, $3, $4, $5, $6, $7)
         """
         params = [(self.run_id, table_name, e.row_index, e.column, str(e.value)[:255], e.error_type, e.message) for e in result.errors]

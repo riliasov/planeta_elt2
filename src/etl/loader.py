@@ -12,8 +12,8 @@ log = logging.getLogger('loader')
 class DataLoader:
     def __init__(self):
         self.schema_prefix = 'staging.' if settings.use_staging_schema else ''
-        # Разрешаем только буквы, цифры и подчеркивание для имен таблиц и колонок
-        self._ident_pattern = re.compile(r'^[a-zA-Z0-9_]+$')
+        # Разрешаем буквы, цифры, подчеркивание и точки (для schema.table)
+        self._ident_pattern = re.compile(r'^[a-zA-Z0-9_.]+$')
 
     def _validate_identifier(self, ident: str) -> str:
         """Проверяет идентификатор (таблица/колонка) на наличие инъекций."""
