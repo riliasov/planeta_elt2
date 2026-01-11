@@ -79,7 +79,8 @@ class GSheetsExtractor:
             log.info(f"Таблица {spreadsheet_id[:8]}... не изменялась, пропуск.")
             return False
 
-    async def extract_sheet_data(self, spreadsheet_id: str, gid: str, range_name: str, target_table: str, check_modified: bool = False) -> Tuple[List[str], List[List[Any]]]:
+    async def extract_sheet_data(self, spreadsheet_id: str, gid: str, range_name: str, target_table: str, 
+                                 check_modified: bool = False, mapping: Optional[Dict[str, str]] = None) -> Tuple[List[str], List[List[Any]]]:
         """Извлекает данные из конкретного листа с повторными попытками."""
         
         if check_modified and not self.is_spreadsheet_modified(spreadsheet_id):
@@ -105,7 +106,7 @@ class GSheetsExtractor:
                 headers = data[0]
                 rows = data[1:]
                 
-                col_names = self._normalize_headers(headers, target_table)
+                col_names = self._normalize_headers(headers, target_table, mapping)
                 return col_names, rows
                 
             except Exception as e:
@@ -119,7 +120,7 @@ class GSheetsExtractor:
                     raise
         raise Exception(f"Не удалось извлечь {target_table} после всех попыток.")
 
-    def _normalize_headers(self, headers: List[str], table_name: str) -> List[str]:
+    def _normalize_headers(self, headers: List[str], table_name: str, mapping: Optional[Dict[str, str]] = None) -> List[str]:
         """Превращает заголовки Sheet в валидные имена колонок Postgres."""
         if table_name == 'rates':
             return [f"col_{i}" for i, _ in enumerate(headers)]
@@ -127,7 +128,13 @@ class GSheetsExtractor:
         seen = set()
         col_names = []
         for h in headers:
-            col_name = slugify(h) or "unknown_col"
+            # 1. Сначала проверяем явный маппинг (по исходному имени)
+            if mapping and h in mapping:
+                col_name = mapping[h]
+            else:
+                # 2. Иначе slugify
+                col_name = slugify(h) or "unknown_col"
+            
             original = col_name
             counter = 1
             while col_name in seen:

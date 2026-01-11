@@ -50,62 +50,90 @@ spreadsheets:
     description: "Основная историческая таблица"
     sheets:
 
+    sheets:
+
       - id: historical_sales
         gid: "294381083"
         description: "Продажи_hst"
-        range: "A1:R"
+        range: "A1:ZZ"
         target_table: sales_hst
         mode: upsert
-        pk: "__row_hash"
+        pk: "record_id"
         compute_row_hash: true
         date_columns:
           - sale_date
+        column_mapping:
+          content_hash: sheet_content_hash
+          created_at: sheet_created_at
+          updated_at: sheet_updated_at
+          updated_by: sheet_updated_by
 
       - id: clients_hst
         gid: "1318679629"
         description: "Клиент_hst"
-        range: "B4:W"
+        range: "B4:ZZ"
         target_table: clients_hst
         mode: upsert
-        pk: "__row_hash"
+        pk: "record_id"
         compute_row_hash: true
         date_columns:
           - created_at
           - updated_at
+        column_mapping:
+          content_hash: sheet_content_hash
+          created_at: sheet_created_at
+          updated_at: sheet_updated_at
+          updated_by: sheet_updated_by
 
       - id: historical_expenses
         gid: "678151176"
         description: "Расходы_hst"
-        range: "A1:N"
+        range: "A1:ZZ"
         target_table: expenses_hst
         mode: upsert
-        pk: "__row_hash"
+        pk: "record_id"
         compute_row_hash: true
         date_columns:
           - expense_date
+        column_mapping:
+          content_hash: sheet_content_hash
+          created_at: sheet_created_at
+          updated_at: sheet_updated_at
+          updated_by: sheet_updated_by
 
       - id: rates
         gid: "199220541"
         description: "Ставки (справочник)"
-        range: "A1:S"
+        range: "A1:ZZ"
         target_table: rates
         mode: replace
+        pk: "record_id"
         compute_row_hash: false
         date_columns:
           - effective_from
           - effective_to
+        column_mapping:
+          content_hash: sheet_content_hash
+          created_at: sheet_created_at
+          updated_at: sheet_updated_at
+          updated_by: sheet_updated_by
 
       - id: historical_trainings
         gid: "1195769572"
         description: "Тренировки_hst"
-        range: "A1:J"
+        range: "A1:ZZ"
         target_table: trainings_hst
         mode: upsert
-        pk: "__row_hash"
+        pk: "record_id"
         compute_row_hash: true
         date_columns:
           - training_date
           - start_time
+        column_mapping:
+          content_hash: sheet_content_hash
+          created_at: sheet_created_at
+          updated_at: sheet_updated_at
+          updated_by: sheet_updated_by
 
   "1-kEt2r-mzqI6PmtFqcFaS7XVAPdlde5FxYMv4DXwd94":
     description: "Текущие операционные таблицы (cur)"
@@ -114,37 +142,52 @@ spreadsheets:
       - id: clients_cur
         gid: "389044927"
         description: "Клиент_cur"
-        range: "A2:V"
+        range: "A2:ZZ"
         target_table: clients_cur
         mode: upsert
-        pk: "__row_hash"
+        pk: "record_id"
         compute_row_hash: true
         date_columns:
           - updated_at
+        column_mapping:
+          content_hash: sheet_content_hash
+          created_at: sheet_created_at
+          updated_at: sheet_updated_at
+          updated_by: sheet_updated_by
 
       - id: current_sales
         gid: "623132210"
         description: "Продажи_cur"
-        range: "A2:T"
+        range: "A2:ZZ"
         target_table: sales_cur
         mode: upsert
-        pk: "__row_hash"
+        pk: "record_id"
         compute_row_hash: true
         date_columns:
           - sale_date
           - created_at
+        column_mapping:
+          content_hash: sheet_content_hash
+          created_at: sheet_created_at
+          updated_at: sheet_updated_at
+          updated_by: sheet_updated_by
 
       - id: current_trainings
         gid: "1856560934"
         description: "Тренировки_cur"
-        range: "A1:J"
+        range: "A1:ZZ"
         target_table: trainings_cur
         mode: upsert
-        pk: "__row_hash"
+        pk: "record_id"
         compute_row_hash: true
         date_columns:
           - training_date
           - start_time
+        column_mapping:
+          content_hash: sheet_content_hash
+          created_at: sheet_created_at
+          updated_at: sheet_updated_at
+          updated_by: sheet_updated_by
 
   "1VxLw1ivJ4u2fU1MJOXwdABvsGE7VhegeLBSBT2qzbuo":
     description: "Текущие расходы"
@@ -152,13 +195,18 @@ spreadsheets:
       - id: current_expenses
         gid: "2069388990"
         description: "Расходы_cur"
-        range: "A2:N"
+        range: "A2:ZZ"
         target_table: expenses_cur
         mode: upsert
-        pk: "__row_hash"
+        pk: "record_id"
         compute_row_hash: true
         date_columns:
           - expense_date
+        column_mapping:
+          content_hash: sheet_content_hash
+          created_at: sheet_created_at
+          updated_at: sheet_updated_at
+          updated_by: sheet_updated_by
 
   "1kYEefSBzxuGGFMoT2v-t0vWlGb7liERE8R_KEyFuNtc":
     description: "Справочники и reference-данные"
@@ -169,8 +217,14 @@ spreadsheets:
         range: "A1:I40"
         target_table: price_reference
         mode: replace
+        pk: "record_id"
         compute_row_hash: false
         date_columns: []
+        column_mapping:
+          content_hash: sheet_content_hash
+          created_at: sheet_created_at
+          updated_at: sheet_updated_at
+          updated_by: sheet_updated_by
 
 datamarts:
   - id: client_balances

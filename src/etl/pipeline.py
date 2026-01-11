@@ -184,9 +184,12 @@ class ELTPipeline:
                 validation_errors = 0
                 
                 try:
+                    mapping = sheet_cfg.get('column_mapping')
+                    
                     # 1. Извлечение
                     col_names, rows = await self.extractor.extract_sheet_data(
-                        spreadsheet_id, str(gid), range_name, target_table
+                        spreadsheet_id, str(gid), range_name, target_table, 
+                        mapping=mapping
                     )
                     
                     if not rows:
