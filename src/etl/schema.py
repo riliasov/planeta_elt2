@@ -13,15 +13,16 @@ class SchemaManager:
 
     async def deploy_meta_tables(self):
         """Создает системные таблицы (logs, runs, stats) и базовую структуру схем."""
-        ddl = """
+        ddl = f"""
         -- 1. СХЕМЫ
-        CREATE SCHEMA IF NOT EXISTS raw;
-        CREATE SCHEMA IF NOT EXISTS staging;
-        CREATE SCHEMA IF NOT EXISTS "references";
-        CREATE SCHEMA IF NOT EXISTS analytics;
+        CREATE SCHEMA IF NOT EXISTS {settings.schema_raw};
+        CREATE SCHEMA IF NOT EXISTS {settings.schema_staging};
+        CREATE SCHEMA IF NOT EXISTS {settings.schema_references};
+        CREATE SCHEMA IF NOT EXISTS {settings.schema_analytics};
+        CREATE SCHEMA IF NOT EXISTS {settings.schema_ops};
 
         -- 2. ТАБЛИЦЫ REFERENCES
-        CREATE TABLE IF NOT EXISTS "references".employees (
+        CREATE TABLE IF NOT EXISTS {settings.schema_references}.employees (
             id SERIAL PRIMARY KEY,
             full_name TEXT UNIQUE NOT NULL,
             role TEXT,
@@ -30,7 +31,7 @@ class SchemaManager:
             created_at TIMESTAMPTZ DEFAULT NOW()
         );
 
-        CREATE TABLE IF NOT EXISTS "references".products (
+        CREATE TABLE IF NOT EXISTS {settings.schema_references}.products (
             id SERIAL PRIMARY KEY,
             name TEXT UNIQUE NOT NULL,
             category TEXT,
@@ -40,7 +41,7 @@ class SchemaManager:
             created_at TIMESTAMPTZ DEFAULT NOW()
         );
 
-        CREATE TABLE IF NOT EXISTS "references".expense_categories (
+        CREATE TABLE IF NOT EXISTS {settings.schema_references}.expense_categories (
             id SERIAL PRIMARY KEY,
             name TEXT UNIQUE NOT NULL,
             parent_category TEXT,
@@ -49,7 +50,7 @@ class SchemaManager:
         );
 
         -- 3. ТАБЛИЦЫ RAW
-        CREATE TABLE IF NOT EXISTS raw.sheets_dump (
+        CREATE TABLE IF NOT EXISTS {settings.schema_raw}.sheets_dump (
             id BIGSERIAL PRIMARY KEY,
             spreadsheet_id TEXT NOT NULL,
             sheet_name TEXT NOT NULL,
@@ -57,8 +58,8 @@ class SchemaManager:
             extracted_at TIMESTAMPTZ DEFAULT NOW()
         );
 
-        -- 4. СИСТЕМНЫЕ ТАБЛИЦЫ
-        CREATE TABLE IF NOT EXISTS validation_logs (
+        -- 4. СИСТЕМНЫЕ ТАБЛИЦЫ В OPS
+        CREATE TABLE IF NOT EXISTS {settings.schema_ops}.validation_logs (
             id BIGSERIAL PRIMARY KEY,
             run_id UUID NOT NULL,
             table_name TEXT NOT NULL,
@@ -69,9 +70,9 @@ class SchemaManager:
             message TEXT NOT NULL,
             created_at TIMESTAMPTZ DEFAULT NOW()
         );
-        CREATE INDEX IF NOT EXISTS idx_validation_logs_run_id ON validation_logs(run_id);
+        CREATE INDEX IF NOT EXISTS idx_validation_logs_run_id ON {settings.schema_ops}.validation_logs(run_id);
         
-        CREATE TABLE IF NOT EXISTS elt_runs (
+        CREATE TABLE IF NOT EXISTS {settings.schema_ops}.elt_runs (
             run_id UUID PRIMARY KEY,
             started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             finished_at TIMESTAMPTZ,
@@ -84,11 +85,11 @@ class SchemaManager:
             error_message TEXT,
             CONSTRAINT elt_runs_status_check CHECK (status IN ('running', 'success', 'failed'))
         );
-        CREATE INDEX IF NOT EXISTS idx_elt_runs_started_at ON elt_runs(started_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_elt_runs_started_at ON {settings.schema_ops}.elt_runs(started_at DESC);
         
-        CREATE TABLE IF NOT EXISTS elt_table_stats (
+        CREATE TABLE IF NOT EXISTS {settings.schema_ops}.elt_table_stats (
             id BIGSERIAL PRIMARY KEY,
-            run_id UUID NOT NULL REFERENCES elt_runs(run_id) ON DELETE CASCADE,
+            run_id UUID NOT NULL REFERENCES {settings.schema_ops}.elt_runs(run_id) ON DELETE CASCADE,
             table_name TEXT NOT NULL,
             rows_extracted INTEGER DEFAULT 0,
             rows_inserted INTEGER DEFAULT 0,
@@ -99,29 +100,19 @@ class SchemaManager:
             duration_ms INTEGER,
             created_at TIMESTAMPTZ DEFAULT NOW()
         );
-        CREATE INDEX IF NOT EXISTS idx_elt_table_stats_run_id ON elt_table_stats(run_id);
+        CREATE INDEX IF NOT EXISTS idx_elt_table_stats_run_id ON {settings.schema_ops}.elt_table_stats(run_id);
         """
-        log.info("Развертывание мета-таблиц и схем (layered architecture)...")
+        log.info(f"Развертывание мета-таблиц и схем в {settings.schema_ops}...")
         await DBConnection.execute(ddl)
         log.info("Мета-таблицы и базовые схемы развернуты.")
 
     async def deploy_staging_tables(self, use_staging_schema: bool = False):
-        """Пересоздает staging таблицы на основе заголовков из Sheets.
-        
-        Args:
-            use_staging_schema: Если True, создаёт таблицы в схеме 'staging' вместо 'public'
-        """
-        schema_prefix = 'staging.' if use_staging_schema else ''
-        
+        """Пересоздает staging таблицы на основе заголовков из Sheets."""
         config = settings.sources
         if not config:
             log.warning("No configuration found")
             return
         
-        # Создаём схему staging если нужно
-        if use_staging_schema:
-            await DBConnection.execute("CREATE SCHEMA IF NOT EXISTS staging")
-
         async with await DBConnection.get_connection() as conn:
             for spreadsheet_id, sdata in config.get('spreadsheets', {}).items():
                 for sheet_cfg in sdata.get('sheets', []):
@@ -130,21 +121,6 @@ class SchemaManager:
                     range_name = sheet_cfg.get('range', 'A:Z')
                     
                     try:
-                        # 1. Get headers only (first row)
-                        # We need to construct a range for just the header row
-                        # Assuming header is the first row of the range. 
-                        # Range "A2:V" -> fetch first row.
-                        
-                        # Use Extract to get all data (simple but potentially heavy if table is huge, 
-                        # but we only need headers. GSheetsExtractor implementation fetches config range.
-                        # Optimization: fetch only limited rows? 
-                        # GSheetsExtractor currently fetches all. Optimizing it to fetch headers would be better 
-                        # but for now let's reuse extractor logic if possible or just use gspread directly here 
-                        # to be precise.
-                        
-                        # Let's use extractor's helper logic if we fetch empty data?
-                        # No, let's just fetch everything. Staging tables are usually small enough.
-                        
                         col_names, _ = await self.extractor.extract_sheet_data(
                             spreadsheet_id, str(gid), range_name, target_table
                         )
@@ -155,16 +131,22 @@ class SchemaManager:
                             
                         # 2. Generate DDL
                         cols_ddl = [f'"{col}" text' for col in col_names]
-                        
-                        # System columns
                         cols_ddl.append('"_row_index" integer')
                         cols_ddl.append('"__row_hash" text')
                         cols_ddl.append('"_loaded_at" timestamp with time zone default now()')
                         
-                        full_table_name = f'{schema_prefix}"{target_table}"'
+                        # Определяем имя таблицы с учетом схемы
+                        if '.' in target_table:
+                            schema, tbl = target_table.split('.', 1)
+                            full_table_name = f'"{schema}"."{tbl}"'
+                        else:
+                            # Fallback для совместимости
+                            prefix = 'staging.' if use_staging_schema else ''
+                            full_table_name = f'{prefix}"{target_table}"'
+
                         ddl = f'DROP TABLE IF EXISTS {full_table_name}; CREATE TABLE {full_table_name} ({", ".join(cols_ddl)});'
                         
-                        log.info(f"Deploying schema for {target_table}...")
+                        log.info(f"Deploying schema for {target_table} (DDL: {full_table_name})...")
                         await conn.execute(ddl)
                         log.info(f"Table {target_table} created/recreated.")
                         

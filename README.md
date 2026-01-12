@@ -54,7 +54,7 @@ python src/main.py --deploy-schema --full-refresh
 ```
 
 ### Только трансформация
-Пропускает загрузку из Google Sheets, выполняет только SQL трансформации (staging -> public).
+Пропускает загрузку из Google Sheets, выполняет только SQL трансформации (stg_gsheets -> core).
 ```bash
 python src/main.py --transform-only
 ```

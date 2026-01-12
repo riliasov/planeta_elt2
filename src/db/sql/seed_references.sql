@@ -2,16 +2,16 @@
 -- These can be updated later from Sheets as well
 
 -- Сотрудники
-INSERT INTO "references".employees (full_name, role, aliases)
+INSERT INTO lookups.employees (full_name, role, aliases)
 VALUES 
-    ('Администратор', 'admin', ARRAY['админ', 'admin']),
-    ('Стандартный Тренер', 'trainer', ARRAY['тренер', 'coach'])
+    ('Система', 'admin', ARRAY['System', 'скрипт']),
+    ('Администратор', 'admin', ARRAY['Админ', 'Admin']);
 ON CONFLICT (full_name) DO NOTHING;
 
--- Категории расходов
-INSERT INTO "references".expense_categories (name, aliases)
-VALUES
-    ('Аренда', ARRAY['rent']),
-    ('Маркетинг', ARRAY['marketing', 'реклама']),
-    ('Зарплата', ARRAY['salary', 'зп'])
+-- Примеры категорий
+INSERT INTO lookups.expense_categories (name, aliases)
+VALUES 
+    ('Аренда', ARRAY['Оплате аренды', 'Rent']),
+    ('Зарплата', ARRAY['ЗП', 'Salary']),
+    ('Материалы', ARRAY['Расходники', 'Materials']);
 ON CONFLICT (name) DO NOTHING;

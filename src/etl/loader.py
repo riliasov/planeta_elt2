@@ -23,6 +23,16 @@ class DataLoader:
             raise ValueError(f"Недопустимый идентификатор: {ident}")
         return ident
 
+    def _format_table_name(self, table: str) -> str:
+        """Форматирует имя таблицы, учитывая схему (stg.table -> "stg"."table")."""
+        table = self._validate_identifier(table)
+        if '.' in table:
+            schema, tbl = table.split('.', 1)
+            return f'"{schema}"."{tbl}"'
+        
+        # Если схемы нет в имени, используем префикс из настроек (если есть)
+        return f'{self.schema_prefix}"{table}"'
+
     def _prepare_row(self, r: List[Any], col_names: List[str], row_num: int) -> Tuple[List[str], str]:
         """Унифицированная подготовка строки: выравнивание, очистка, хеширование."""
         # Выравнивание и приведение к строке
@@ -37,15 +47,18 @@ class DataLoader:
 
     async def load_full_refresh(self, table: str, col_names: List[str], rows: List[List[Any]]) -> Dict[str, int]:
         """Полная перезагрузка таблицы: TRUNCATE + INSERT."""
-        table = self._validate_identifier(table)
+        if '.' not in table:
+             table = self._validate_identifier(table)
+        
+        target_table_sql = self._format_table_name(table)
         validated_cols = [self._validate_identifier(c) for c in col_names]
         
-        log.info(f"Начало полной перезагрузки {table} ({len(rows)} строк)")
+        log.info(f"Начало полной перезагрузки {target_table_sql} ({len(rows)} строк)")
         stats = {'inserted': 0, 'errors': 0}
         
         async with await DBConnection.get_connection() as conn:
             async with conn.transaction():
-                await conn.execute(f'TRUNCATE TABLE {self.schema_prefix}"{table}"')
+                await conn.execute(f'TRUNCATE TABLE {target_table_sql}')
                 
                 prepared_records = []
                 target_cols = validated_cols + ["_row_index", "__row_hash"]
@@ -60,9 +73,15 @@ class DataLoader:
                         stats['errors'] += 1
                 
                 if prepared_records:
-                    target_schema = self.schema_prefix.replace('.', '') if self.schema_prefix else None
+                    if '.' in table:
+                        target_schema = table.split('.', 1)[0]
+                        target_table_only = table.split('.', 1)[1]
+                    else:
+                        target_schema = self.schema_prefix.replace('.', '') if self.schema_prefix else None
+                        target_table_only = table
+                        
                     await conn.copy_records_to_table(
-                        table,
+                        target_table_only,
                         schema_name=target_schema,
                         records=prepared_records,
                         columns=target_cols
@@ -74,10 +93,13 @@ class DataLoader:
 
     async def load_cdc(self, table: str, col_names: List[str], rows: List[List[Any]], pk_field: str = '__row_hash') -> Dict[str, int]:
         """Инкрементальная загрузка с использованием CDC."""
-        table = self._validate_identifier(table)
+        """Инкрементальная загрузка с использованием CDC."""
+        if '.' not in table:
+             table = self._validate_identifier(table)
         pk_field = self._validate_identifier(pk_field)
+        target_table_sql = self._format_table_name(table)
         
-        log.info(f"CDC загрузка в {table} ({len(rows)} строк из источника) [PK: {pk_field}]")
+        log.info(f"CDC загрузка в {target_table_sql} ({len(rows)} строк из источника) [PK: {pk_field}]")
         
         existing_hashes = await self._fetch_existing_hashes(table, pk_field)
         processor = CDCProcessor(existing_hashes)
@@ -113,10 +135,13 @@ class DataLoader:
 
     async def calculate_changes(self, table: str, col_names: List[str], rows: List[List[Any]], pk_field: str = '__row_hash') -> Dict[str, int]:
         """Вычисляет статистику изменений без применения (для dry-run)."""
-        table = self._validate_identifier(table)
+        """Вычисляет статистику изменений без применения (для dry-run)."""
+        if '.' not in table:
+             table = self._validate_identifier(table)
+        target_table_sql = self._format_table_name(table)
         pk_field = self._validate_identifier(pk_field)
         
-        log.info(f"🔍 [DRY-RUN] Расчет изменений для {table} [PK: {pk_field}]")
+        log.info(f"🔍 [DRY-RUN] Расчет изменений для {target_table_sql} [PK: {pk_field}]")
         
         existing_hashes = await self._fetch_existing_hashes(table, pk_field)
         processor = CDCProcessor(existing_hashes)
@@ -147,8 +172,10 @@ class DataLoader:
 
     async def _fetch_existing_hashes(self, table: str, pk_field: str) -> Dict[str, str]:
         # table и pk_field уже валидированы выше
+        # table и pk_field уже валидированы выше (в вызывающем методе) или должны быть здесь
+        target_table_sql = self._format_table_name(table)
         try:
-            query = f'SELECT "{pk_field}" as pk, __row_hash FROM {self.schema_prefix}"{table}" WHERE "{pk_field}" IS NOT NULL'
+            query = f'SELECT "{pk_field}" as pk, __row_hash FROM {target_table_sql} WHERE "{pk_field}" IS NOT NULL'
             rows = await DBConnection.fetch(query)
             return {str(row['pk']): row['__row_hash'] for row in rows if row['__row_hash']}
         except Exception as e:
@@ -157,7 +184,9 @@ class DataLoader:
 
     async def _apply_cdc_changes(self, table: str, processor: CDCProcessor, col_names: List[str], pk_field: str):
         """Выполняет INSERT/UPDATE/DELETE запросы."""
-        table = self._validate_identifier(table)
+        if '.' not in table:
+             table = self._validate_identifier(table)
+        target_table_sql = self._format_table_name(table)
         validated_cols = [self._validate_identifier(c) for c in col_names]
         pk_field = self._validate_identifier(pk_field)
 
@@ -166,7 +195,7 @@ class DataLoader:
             if processor.to_insert:
                 cols_str = ', '.join([f'"{c}"' for c in validated_cols] + ['"_row_index"', '"__row_hash"'])
                 placeholders = ', '.join([f'${i+1}' for i in range(len(validated_cols) + 2)])
-                insert_query = f'INSERT INTO {self.schema_prefix}"{table}" ({cols_str}) VALUES ({placeholders})'
+                insert_query = f'INSERT INTO {target_table_sql} ({cols_str}) VALUES ({placeholders})'
                 
                 for item in processor.to_insert:
                     data = item['data']
@@ -193,12 +222,12 @@ class DataLoader:
                     idx += 1
                     vals.append(pk_val) # PK for WHERE
                     
-                    query = f'UPDATE {self.schema_prefix}"{table}" SET {", ".join(set_parts)} WHERE "{pk_field}" = ${idx}'
+                    query = f'UPDATE {target_table_sql} SET {", ".join(set_parts)} WHERE "{pk_field}" = ${idx}'
                     await conn.execute(query, *vals)
 
             # DELETEs
             if processor.to_delete:
-                del_query = f'DELETE FROM {self.schema_prefix}"{table}" WHERE "{pk_field}" = $1'
+                del_query = f'DELETE FROM {target_table_sql} WHERE "{pk_field}" = $1'
                 for pk_val in processor.to_delete:
                     await conn.execute(del_query, pk_val)
                 log.info(f"Удалено {len(processor.to_delete)} строк из {table}")

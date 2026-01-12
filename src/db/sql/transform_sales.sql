@@ -1,9 +1,9 @@
 -- Трансформация sales_cur/sales_hst -> sales
 -- Источник: sales_cur, sales_hst (Google Sheets продажи)
--- Целевая таблица: sales (public)
+-- Целевая таблица: core.sales 
 
 -- === ТЕКУЩИЕ ПРОДАЖИ ===
-INSERT INTO sales (
+INSERT INTO core.sales (
     legacy_id, row_hash, source, date, product_name, type, category,
     quantity, full_price, discount, final_price,
     cash, transfer, terminal, debt, comment, client_id
@@ -31,10 +31,10 @@ SELECT DISTINCT ON (legacy_id)
     COALESCE(NULLIF(regexp_replace("terminal"::text, '[^0-9,.-]', '', 'g'), '')::numeric, 0) as terminal,
     COALESCE(NULLIF(regexp_replace("vdolg"::text, '[^0-9,.-]', '', 'g'), '')::numeric, 0) as debt,
     NULLIF(TRIM("kommentariy"::text), '') as comment,
-    (SELECT id FROM clients c WHERE c.name = staging.sales_cur."klient"::text LIMIT 1) as client_id
-FROM staging.sales_cur
+    (SELECT id FROM core.clients c WHERE c.name = s."klient"::text LIMIT 1) as client_id
+FROM stg_gsheets.sales_cur s
 WHERE NULLIF(TRIM("produkt"::text), '') IS NOT NULL
-  AND (SELECT id FROM clients c WHERE c.name = staging.sales_cur."klient"::text LIMIT 1) IS NOT NULL
+  AND (SELECT id FROM core.clients c WHERE c.name = s."klient"::text LIMIT 1) IS NOT NULL
 ORDER BY legacy_id
 ON CONFLICT (legacy_id) DO UPDATE SET
     row_hash = EXCLUDED.row_hash,
@@ -58,7 +58,7 @@ ON CONFLICT (legacy_id) DO UPDATE SET
     updated_at = NOW();
 
 -- === ИСТОРИЧЕСКИЕ ПРОДАЖИ ===
-INSERT INTO sales (
+INSERT INTO core.sales (
     legacy_id, row_hash, source, date, product_name, type, category,
     quantity, full_price, discount, final_price,
     cash, transfer, terminal, debt, comment, client_id
@@ -86,10 +86,10 @@ SELECT DISTINCT ON (legacy_id)
     COALESCE(NULLIF(regexp_replace("terminal"::text, '[^0-9,.-]', '', 'g'), '')::numeric, 0) as terminal,
     COALESCE(NULLIF(regexp_replace("vdolg"::text, '[^0-9,.-]', '', 'g'), '')::numeric, 0) as debt,
     NULLIF(TRIM("kommentariy"::text), '') as comment,
-    (SELECT id FROM clients c WHERE c.name = staging.sales_hst."klient"::text LIMIT 1) as client_id
-FROM staging.sales_hst
+    (SELECT id FROM core.clients c WHERE c.name = s."klient"::text LIMIT 1) as client_id
+FROM stg_gsheets.sales_hst s
 WHERE NULLIF(TRIM("produkt"::text), '') IS NOT NULL
-  AND (SELECT id FROM clients c WHERE c.name = staging.sales_hst."klient"::text LIMIT 1) IS NOT NULL
+  AND (SELECT id FROM core.clients c WHERE c.name = s."klient"::text LIMIT 1) IS NOT NULL
 ORDER BY legacy_id
 ON CONFLICT (legacy_id) DO UPDATE SET
     row_hash = EXCLUDED.row_hash,

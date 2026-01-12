@@ -8,6 +8,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from dotenv import load_dotenv
+from src.config.settings import settings
 
 load_dotenv()
 
@@ -161,7 +162,7 @@ def fetch_runs_data(_days: int = 30) -> pd.DataFrame:
                 SELECT run_id, started_at, finished_at, status, mode,
                        tables_processed, total_rows_synced, validation_errors,
                        duration_seconds, error_message
-                FROM elt_runs
+                FROM {settings.schema_ops}.elt_runs
                 WHERE started_at > NOW() - INTERVAL '{_days} days'
                 ORDER BY started_at DESC
             """)
@@ -174,7 +175,7 @@ def fetch_runs_data(_days: int = 30) -> pd.DataFrame:
         return pd.DataFrame(data) if data else pd.DataFrame()
     except Exception as e:
         # Не выводим ворнинг если таблиц еще нет (первый запуск)
-        if "relation \"elt_runs\" does not exist" not in str(e):
+        if f'relation "{settings.schema_ops}.elt_runs" does not exist' not in str(e):
             st.warning(f"Ошибка получения данных: {e}")
         return pd.DataFrame()
 
@@ -186,16 +187,16 @@ def fetch_table_stats(run_id: str = None) -> pd.DataFrame:
         conn = await get_db_conn()
         try:
             if run_id:
-                rows = await conn.fetch("""
-                    SELECT * FROM elt_table_stats
+                rows = await conn.fetch(f"""
+                    SELECT * FROM {settings.schema_ops}.elt_table_stats
                     WHERE run_id = $1
                     ORDER BY table_name
                 """, run_id)
             else:
-                rows = await conn.fetch("""
+                rows = await conn.fetch(f"""
                     SELECT ts.*, r.started_at
-                    FROM elt_table_stats ts
-                    JOIN elt_runs r ON r.run_id = ts.run_id
+                    FROM {settings.schema_ops}.elt_table_stats ts
+                    JOIN {settings.schema_ops}.elt_runs r ON r.run_id = ts.run_id
                     ORDER BY r.started_at DESC, ts.table_name
                     LIMIT 100
                 """)
@@ -217,15 +218,15 @@ def fetch_validation_errors(run_id: str = None, limit: int = 50) -> pd.DataFrame
         conn = await get_db_conn()
         try:
             if run_id:
-                rows = await conn.fetch("""
-                    SELECT * FROM validation_logs
+                rows = await conn.fetch(f"""
+                    SELECT * FROM {settings.schema_ops}.validation_logs
                     WHERE run_id = $1
                     ORDER BY created_at DESC
                     LIMIT $2
                 """, run_id, limit)
             else:
-                rows = await conn.fetch("""
-                    SELECT * FROM validation_logs
+                rows = await conn.fetch(f"""
+                    SELECT * FROM {settings.schema_ops}.validation_logs
                     ORDER BY created_at DESC
                     LIMIT $1
                 """, limit)

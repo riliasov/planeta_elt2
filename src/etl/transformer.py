@@ -18,11 +18,12 @@ class Transformer:
         """Запускает трансформации."""
         log.info("Начало этапа трансформации данных...")
         
-        # Порядок важен: Clients -> Schedule -> Sales (dependencies)
+        # Порядок важен: Clients -> Schedule -> Sales (dependencies) -> Views
         files_to_run = [
             'transform_clients.sql',
             'transform_schedule.sql', 
-            'transform_sales.sql'
+            'transform_sales.sql',
+            'view_client_balances.sql'  # Пересоздаем витрину после обновления данных
         ]
         
         success_count = 0

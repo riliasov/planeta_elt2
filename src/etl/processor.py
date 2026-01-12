@@ -5,6 +5,7 @@ from src.etl.extractor import GSheetsExtractor
 from src.etl.loader import DataLoader
 from src.etl.validator import ContractValidator, ValidationResult
 from src.db.connection import DBConnection
+from src.config.settings import settings
 
 log = logging.getLogger('processor')
 
@@ -98,8 +99,8 @@ class TableProcessor:
             raise ValueError(f"КРИТИЧНО: Строки с >5 ошибками в {table}. Бит формат?")
 
     async def _log_validation_errors(self, table_name: str, result: ValidationResult):
-        query = """
-            INSERT INTO ops.validation_logs (run_id, table_name, row_index, column_name, 
+        query = f"""
+            INSERT INTO {settings.schema_ops}.validation_logs (run_id, table_name, row_index, column_name, 
             invalid_value, error_type, message) VALUES ($1, $2, $3, $4, $5, $6, $7)
         """
         params = [(self.run_id, table_name, e.row_index, e.column, str(e.value)[:255], e.error_type, e.message) for e in result.errors]

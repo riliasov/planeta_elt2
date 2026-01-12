@@ -81,15 +81,15 @@ class ELTPipeline:
             log.info(f"=== Пайплайн завершен за {duration:.2f} сек (статус: {status}) ===")
 
     async def _start_run(self, mode: str):
-        query = "INSERT INTO ops.elt_runs (run_id, mode, status) VALUES ($1, $2, 'running')"
+        query = f"INSERT INTO {settings.schema_ops}.elt_runs (run_id, mode, status) VALUES ($1, $2, 'running')"
         try:
             await DBConnection.execute(query, str(self.run_id), mode)
         except Exception as e:
             log.warning(f"Не удалось зарегистрировать начало запуска: {e}")
 
     async def _finish_run(self, status: str, duration: float, error_message: Optional[str] = None):
-        query = """
-            UPDATE ops.elt_runs SET
+        query = f"""
+            UPDATE {settings.schema_ops}.elt_runs SET
                 finished_at = NOW(), status = $2, duration_seconds = $3,
                 tables_processed = $4, total_rows_synced = $5,
                 validation_errors = $6, error_message = $7
@@ -168,8 +168,8 @@ class ELTPipeline:
         })
 
     async def _log_table_stats(self, result: Dict[str, Any]):
-        query = """
-            INSERT INTO ops.elt_table_stats (
+        query = f"""
+            INSERT INTO {settings.schema_ops}.elt_table_stats (
                 run_id, table_name, rows_extracted, rows_inserted, 
                 rows_updated, rows_deleted, validation_errors, duration_ms
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)

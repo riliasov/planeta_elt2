@@ -1,8 +1,8 @@
 -- Трансформация clients_cur -> clients
 -- Источник: clients_cur (Google Sheets текущие клиенты)
--- Целевая таблица: clients (public)
+-- Целевая таблица: core.clients
 
-INSERT INTO clients (
+INSERT INTO core.clients (
     legacy_id, row_hash, source, name, phone, child_name, child_dob, 
     age, spent, balance, debt, status
 )
@@ -23,7 +23,7 @@ SELECT DISTINCT ON (legacy_id)
     0 as balance,
     0 as debt,
     NULLIF(TRIM("tip"::text), '') as status
-FROM staging.clients_cur
+FROM stg_gsheets.clients_cur
 WHERE NULLIF(TRIM("klient"::text), '') IS NOT NULL
 ORDER BY legacy_id
 ON CONFLICT (legacy_id) DO UPDATE SET

@@ -20,7 +20,14 @@ class Settings(BaseSettings):
     
     # App
     log_level: str = "INFO"
-    use_staging_schema: bool = True
+    use_staging_schema: bool = False
+    
+    # Database Schemas
+    schema_ops: str = "ops"
+    schema_staging: str = "stg_gsheets"
+    schema_raw: str = "raw"
+    schema_analytics: str = "analytics"
+    schema_references: str = "lookups"
     
     # Sources config
     _sources_config: Dict[str, Any] = {}

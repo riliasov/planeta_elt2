@@ -15,7 +15,7 @@ WITH client_sales AS (
             END * quantity
         ) as units_bought,
         SUM(final_price) as total_spent
-    FROM sales
+    FROM core.sales
     WHERE is_deleted = false
     GROUP BY 1
 ),
@@ -23,7 +23,7 @@ client_trainings AS (
     SELECT 
         client_id,
         COUNT(*) as units_used
-    FROM schedule
+    FROM core.schedule
     WHERE is_deleted = false
       AND status IN ('Посетили', 'Пропуск')
     GROUP BY 1
@@ -37,7 +37,7 @@ SELECT
     COALESCE(s.total_spent, 0) as "Оплачено",
     c.status as "Статус",
     NOW() as "Дата обновления"
-FROM clients c
+FROM core.clients c
 LEFT JOIN client_sales s ON c.id = s.client_id
 LEFT JOIN client_trainings t ON c.id = t.client_id
 WHERE c.is_deleted = false

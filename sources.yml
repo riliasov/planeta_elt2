@@ -143,7 +143,7 @@ spreadsheets:
         gid: "389044927"
         description: "Клиент_cur"
         range: "A2:ZZ"
-        target_table: stg_gsheets.clients
+        target_table: stg_gsheets.clients_cur
         mode: upsert
         pk: "record_id"
         compute_row_hash: true
@@ -159,7 +159,7 @@ spreadsheets:
         gid: "623132210"
         description: "Продажи_cur"
         range: "A2:ZZ"
-        target_table: stg_gsheets.sales
+        target_table: stg_gsheets.sales_cur
         mode: upsert
         pk: "record_id"
         compute_row_hash: true
@@ -176,7 +176,7 @@ spreadsheets:
         gid: "1856560934"
         description: "Тренировки_cur"
         range: "A1:ZZ"
-        target_table: stg_gsheets.trainings
+        target_table: stg_gsheets.trainings_cur
         mode: upsert
         pk: "record_id"
         compute_row_hash: true
@@ -196,7 +196,7 @@ spreadsheets:
         gid: "2069388990"
         description: "Расходы_cur"
         range: "A2:ZZ"
-        target_table: stg_gsheets.expenses
+        target_table: stg_gsheets.expenses_cur
         mode: upsert
         pk: "record_id"
         compute_row_hash: true

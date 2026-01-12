@@ -1,9 +1,9 @@
 -- Трансформация trainings_cur/trainings_hst -> schedule
 -- Источник: trainings_cur, trainings_hst (Google Sheets тренировки)
--- Целевая таблица: schedule (public)
+-- Целевая таблица: core.schedule
 
 -- === ТЕКУЩИЕ ТРЕНИРОВКИ ===
-INSERT INTO schedule (
+INSERT INTO core.schedule (
     legacy_id, row_hash, source, date, start_time, end_time,
     status, type, category, comment, client_id
 )
@@ -24,10 +24,10 @@ SELECT DISTINCT ON (legacy_id)
     NULLIF(TRIM("tip"::text), '') as type,
     NULLIF(TRIM("kategoriya"::text), '') as category,
     NULLIF(TRIM("kommentariy"::text), '') as comment,
-    (SELECT id FROM clients c WHERE c.name = staging.trainings_cur.klient LIMIT 1) as client_id
-FROM staging.trainings_cur
+    (SELECT id FROM core.clients c WHERE c.name = s.klient LIMIT 1) as client_id
+FROM stg_gsheets.trainings_cur s
 WHERE NULLIF(TRIM("data"::text), '') IS NOT NULL
-  AND (SELECT id FROM clients c WHERE c.name = staging.trainings_cur.klient LIMIT 1) IS NOT NULL
+  AND (SELECT id FROM core.clients c WHERE c.name = s.klient LIMIT 1) IS NOT NULL
 ORDER BY legacy_id
 ON CONFLICT (legacy_id) DO UPDATE SET
     row_hash = EXCLUDED.row_hash,
@@ -45,7 +45,7 @@ ON CONFLICT (legacy_id) DO UPDATE SET
     updated_at = NOW();
 
 -- === ИСТОРИЧЕСКИЕ ТРЕНИРОВКИ ===
-INSERT INTO schedule (
+INSERT INTO core.schedule (
     legacy_id, row_hash, source, date, start_time, end_time,
     status, type, category, comment, client_id
 )
@@ -66,10 +66,10 @@ SELECT DISTINCT ON (legacy_id)
     NULLIF(TRIM("tip"::text), '') as type,
     NULLIF(TRIM("kategoriya"::text), '') as category,
     NULLIF(TRIM("kommentariy"::text), '') as comment,
-    (SELECT id FROM clients c WHERE c.name = staging.trainings_hst.klient LIMIT 1) as client_id
-FROM staging.trainings_hst
+    (SELECT id FROM core.clients c WHERE c.name = s.klient LIMIT 1) as client_id
+FROM stg_gsheets.trainings_hst s
 WHERE NULLIF(TRIM("data"::text), '') IS NOT NULL
-  AND (SELECT id FROM clients c WHERE c.name = staging.trainings_hst.klient LIMIT 1) IS NOT NULL
+  AND (SELECT id FROM core.clients c WHERE c.name = s.klient LIMIT 1) IS NOT NULL
 ORDER BY legacy_id
 ON CONFLICT (legacy_id) DO UPDATE SET
     row_hash = EXCLUDED.row_hash,

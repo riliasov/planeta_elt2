@@ -7,7 +7,7 @@ async def main():
     print("Checking database schemas and raw counts...")
     try:
         # Schema check
-        schemas = await DBConnection.fetch("SELECT schema_name FROM information_schema.schemata WHERE schema_name IN ('raw', 'staging', 'references', 'analytics')")
+        schemas = await DBConnection.fetch("SELECT schema_name FROM information_schema.schemata WHERE schema_name IN ('raw', 'stg_gsheets', 'lookups', 'analytics')")
         print(f"Schemas found: {[r['schema_name'] for r in schemas]}")
         
         # Raw dump check

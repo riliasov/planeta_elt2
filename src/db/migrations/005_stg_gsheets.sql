@@ -21,9 +21,15 @@ DECLARE
     ];
 BEGIN
     FOREACH t IN ARRAY tables LOOP
+        -- Check public
         IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = t) THEN
             EXECUTE format('ALTER TABLE public.%I SET SCHEMA stg_gsheets', t);
-            RAISE NOTICE 'Moved table % to stg_gsheets schema', t;
+            RAISE NOTICE 'Moved table % from public to stg_gsheets', t;
+        END IF;
+        -- Check staging (legacy name)
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'staging' AND table_name = t) THEN
+            EXECUTE format('ALTER TABLE staging.%I SET SCHEMA stg_gsheets', t);
+            RAISE NOTICE 'Moved table % from staging to stg_gsheets', t;
         END IF;
     END LOOP;
 END $$;
