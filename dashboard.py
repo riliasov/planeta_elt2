@@ -145,11 +145,13 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+
 async def get_db_conn():
     """Устанавливает прямое соединение с БД для Streamlit."""
     import asyncpg
     from src.config.settings import settings
-    return await asyncpg.connect(settings.database_dsn)
+    # Supabase uses PgBouncer in transaction mode, so we must disable prepared statements
+    return await asyncpg.connect(settings.database_dsn, statement_cache_size=0)
 
 
 @st.cache_data(ttl=30)
@@ -180,65 +182,8 @@ def fetch_runs_data(_days: int = 30) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-@st.cache_data(ttl=30)
-def fetch_table_stats(run_id: str = None) -> pd.DataFrame:
-    """Получает статистику по таблицам."""
-    async def _fetch():
-        conn = await get_db_conn()
-        try:
-            if run_id:
-                rows = await conn.fetch(f"""
-                    SELECT * FROM {settings.schema_ops}.elt_table_stats
-                    WHERE run_id = $1
-                    ORDER BY table_name
-                """, run_id)
-            else:
-                rows = await conn.fetch(f"""
-                    SELECT ts.*, r.started_at
-                    FROM {settings.schema_ops}.elt_table_stats ts
-                    JOIN {settings.schema_ops}.elt_runs r ON r.run_id = ts.run_id
-                    ORDER BY r.started_at DESC, ts.table_name
-                    LIMIT 100
-                """)
-            return [dict(r) for r in rows]
-        finally:
-            await conn.close()
-    
-    try:
-        data = asyncio.run(_fetch())
-        return pd.DataFrame(data) if data else pd.DataFrame()
-    except Exception:
-        return pd.DataFrame()
 
-
-@st.cache_data(ttl=30)
-def fetch_validation_errors(run_id: str = None, limit: int = 50) -> pd.DataFrame:
-    """Получает ошибки валидации."""
-    async def _fetch():
-        conn = await get_db_conn()
-        try:
-            if run_id:
-                rows = await conn.fetch(f"""
-                    SELECT * FROM {settings.schema_ops}.validation_logs
-                    WHERE run_id = $1
-                    ORDER BY created_at DESC
-                    LIMIT $2
-                """, run_id, limit)
-            else:
-                rows = await conn.fetch(f"""
-                    SELECT * FROM {settings.schema_ops}.validation_logs
-                    ORDER BY created_at DESC
-                    LIMIT $1
-                """, limit)
-            return [dict(r) for r in rows]
-        finally:
-            await conn.close()
-    
-    try:
-        data = asyncio.run(_fetch())
-        return pd.DataFrame(data) if data else pd.DataFrame()
-    except Exception:
-        return pd.DataFrame()
+# Validations and Stats logic moved to pages/
 
 
 def render_status_badge(status: str) -> str:
@@ -250,13 +195,11 @@ def render_status_badge(status: str) -> str:
 
 def main():
     # Sidebar Navigation
+
     with st.sidebar:
         st.header("Planeta ELT")
-        page = st.radio(
-            "Navigation", 
-            ["Overview", "Table Stats", "Validation Errors"],
-            label_visibility="collapsed"
-        )
+        st.caption("Monitoring & Analytics")
+        # page = st.radio... REMOVED
         
         st.divider()
         
@@ -271,134 +214,96 @@ def main():
         st.caption(f"Last update: {datetime.now().strftime('%H:%M:%S')}")
 
     # Load shared data
+
+
+    # Load shared data
     runs_df = fetch_runs_data(days_range)
+    if not runs_df.empty:
+        # Timezone Correction: UTC -> UTC+5
+        runs_df['started_at'] = pd.to_datetime(runs_df['started_at']) + pd.Timedelta(hours=5)
+        if 'finished_at' in runs_df.columns:
+            runs_df['finished_at'] = pd.to_datetime(runs_df['finished_at']) + pd.Timedelta(hours=5)
 
-    # PAGE: OVERVIEW
-    if page == "Overview":
-        st.markdown("### 📊 Pipeline Overview")
-        
-        if runs_df.empty:
-            st.info("No data. Run pipeline: `python -m src.main`")
-            return
+    # LANDING PAGE: OVERVIEW
+    st.markdown("### 📊 Pipeline Overview")
+    
+    if runs_df.empty:
+        st.info("No data. Run pipeline: `python -m src.main`")
+        return
 
-        # KPI Compact
-        col1, col2, col3, col4, col5 = st.columns(5)
-        
-        total_runs = len(runs_df)
-        successful = len(runs_df[runs_df['status'] == 'success'])
-        failed = len(runs_df[runs_df['status'] == 'failed'])
-        success_rate = (successful / total_runs * 100) if total_runs > 0 else 0
-        
-        total_rows = runs_df['total_rows_synced'].sum()
-        avg_duration = runs_df['duration_seconds'].mean()
+    # KPI Compact
+    col1, col2, col3, col4, col5 = st.columns(5)
+    
+    total_runs = len(runs_df)
+    successful = len(runs_df[runs_df['status'] == 'success'])
+    failed = len(runs_df[runs_df['status'] == 'failed'])
+    success_rate = (successful / total_runs * 100) if total_runs > 0 else 0
+    
+    total_rows = runs_df['total_rows_synced'].sum()
+    avg_duration = runs_df['duration_seconds'].mean()
 
-        col1.metric("Total Runs", total_runs)
-        col2.metric("Success", successful, f"{success_rate:.0f}%")
-        col3.metric("Errors", failed, delta_color="inverse")
-        col4.metric("Rows", f"{total_rows:,}")
-        col5.metric("Avg Time", f"{avg_duration:.1f}s" if pd.notna(avg_duration) else "—")
-        
-        st.markdown("---")
-        
-        # Charts Compact
-        c1, c2 = st.columns([1, 1])
-        
-        with c1:
-            st.markdown("#### Run History")
-            if 'started_at' in runs_df.columns:
-                runs_df['date'] = pd.to_datetime(runs_df['started_at']).dt.date
-                daily = runs_df.groupby(['date', 'status']).size().reset_index(name='count')
-                
-                fig = px.bar(
-                    daily, x='date', y='count', color='status',
-                    color_discrete_map={'success': '#10b981', 'failed': '#ef4444', 'running': '#f59e0b'},
-                    barmode='stack', template='plotly_white', height=250
-                )
-                fig.update_layout(
-                    margin=dict(l=0, r=0, t=0, b=0),
-                    font=dict(size=10, color="#64748b"),
-                    xaxis_title=None, yaxis_title=None,
-                    showlegend=False
-                )
-                st.plotly_chart(fig, use_container_width=True)
-
-        with c2:
-            st.markdown("#### Duration (sec)")
-            recent = runs_df.head(30)
-            if not recent.empty and 'duration_seconds' in recent.columns:
-                recent['label'] = pd.to_datetime(recent['started_at']).dt.strftime('%m/%d %H:%M')
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(
-                    x=recent['label'], y=recent['duration_seconds'],
-                    mode='lines', line=dict(color='#3b82f6', width=1),
-                    fill='tozeroy', fillcolor='rgba(59, 130, 246, 0.05)'
-                ))
-                fig.update_layout(
-                    template='plotly_white', height=250,
-                    margin=dict(l=0, r=0, t=0, b=0),
-                    font=dict(size=10, color="#64748b"),
-                    xaxis_title=None, yaxis_title=None,
-                    showlegend=False
-                )
-                st.plotly_chart(fig, use_container_width=True)
-
-        st.markdown("#### Recent Runs")
-        display_df = runs_df.head(15).copy()
-        if not display_df.empty:
-            display_df['started_at'] = pd.to_datetime(display_df['started_at']).dt.strftime('%Y-%m-%d %H:%M')
-            display_df['duration'] = display_df['duration_seconds'].apply(lambda x: f"{x:.1f}s" if pd.notna(x) else "—")
+    col1.metric("Total Runs", total_runs)
+    col2.metric("Success", successful, f"{success_rate:.0f}%")
+    col3.metric("Errors", failed, delta_color="inverse")
+    col4.metric("Rows", f"{total_rows:,}")
+    col5.metric("Avg Time", f"{avg_duration:.1f}s" if pd.notna(avg_duration) else "—")
+    
+    st.markdown("---")
+    
+    # Charts Compact
+    c1, c2 = st.columns([1, 1])
+    
+    with c1:
+        st.markdown("#### Run History")
+        if 'started_at' in runs_df.columns:
+            runs_df['date'] = pd.to_datetime(runs_df['started_at']).dt.date
+            daily = runs_df.groupby(['date', 'status']).size().reset_index(name='count')
             
-            st.dataframe(
-                display_df[['started_at', 'status', 'mode', 'tables_processed', 'total_rows_synced', 'validation_errors', 'duration']],
-                height=300,
-                hide_index=True,
-                use_container_width=True
+            fig = px.bar(
+                daily, x='date', y='count', color='status',
+                color_discrete_map={'success': '#10b981', 'failed': '#ef4444', 'running': '#f59e0b'},
+                barmode='stack', template='plotly_white', height=250
             )
+            fig.update_layout(
+                margin=dict(l=0, r=0, t=0, b=0),
+                font=dict(size=10, color="#64748b"),
+                xaxis_title=None, yaxis_title=None,
+                showlegend=False
+            )
+            st.plotly_chart(fig, use_container_width=True)
 
-    # PAGE: TABLE STATS
-    elif page == "Table Stats":
-        st.markdown("### 📋 Table Statistics")
-        stats_df = fetch_table_stats()
+    with c2:
+        st.markdown("#### Duration (sec)")
+        recent = runs_df.head(30)
+        if not recent.empty and 'duration_seconds' in recent.columns:
+            recent['label'] = pd.to_datetime(recent['started_at']).dt.strftime('%m/%d %H:%M')
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=recent['label'], y=recent['duration_seconds'],
+                mode='lines', line=dict(color='#3b82f6', width=1),
+                fill='tozeroy', fillcolor='rgba(59, 130, 246, 0.05)'
+            ))
+            fig.update_layout(
+                template='plotly_white', height=250,
+                margin=dict(l=0, r=0, t=0, b=0),
+                font=dict(size=10, color="#64748b"),
+                xaxis_title=None, yaxis_title=None,
+                showlegend=False
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("#### Recent Runs")
+    display_df = runs_df.head(15).copy()
+    if not display_df.empty:
+        display_df['started_at'] = pd.to_datetime(display_df['started_at']).dt.strftime('%Y-%m-%d %H:%M')
+        display_df['duration'] = display_df['duration_seconds'].apply(lambda x: f"{x:.1f}s" if pd.notna(x) else "—")
         
-        if not stats_df.empty:
-            # Aggregate stats
-            agg = stats_df.groupby('table_name').agg({
-                'rows_inserted': 'sum',
-                'rows_updated': 'sum',
-                'rows_deleted': 'sum',
-                'validation_errors': 'sum',
-                'duration_ms': 'mean',
-                'run_id': 'count' # count runs
-            }).reset_index()
-            agg['avg_ms'] = agg['duration_ms'].round(0).astype(int)
-            agg.rename(columns={'run_id': 'runs_count'}, inplace=True)
-            
-            st.dataframe(
-                agg[['table_name', 'runs_count', 'rows_inserted', 'rows_updated', 'rows_deleted', 'validation_errors', 'avg_ms']],
-                use_container_width=True,
-                height=600,
-                hide_index=True
-            )
-        else:
-            st.info("No table stats available.")
-
-    # PAGE: VALIDATION ERRORS
-    elif page == "Validation Errors":
-        st.markdown("### ⚠️ Validation Errors Log")
-        limit = st.selectbox("Rows limit", [50, 100, 500], index=1)
-        errors_df = fetch_validation_errors(limit=limit)
-        
-        if not errors_df.empty:
-            errors_df['created_at'] = pd.to_datetime(errors_df['created_at']).dt.strftime('%Y-%m-%d %H:%M')
-            st.dataframe(
-                errors_df[['created_at', 'table_name', 'column_name', 'invalid_value', 'error_type', 'message']],
-                use_container_width=True,
-                height=700,
-                hide_index=True
-            )
-        else:
-            st.success("No validation errors found.")
-
+        st.dataframe(
+            display_df[['started_at', 'status', 'mode', 'tables_processed', 'total_rows_synced', 'validation_errors', 'duration']],
+            height=300,
+            hide_index=True,
+            use_container_width=True
+        )
 
 if __name__ == "__main__":
     main()

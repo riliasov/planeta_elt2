@@ -1,5 +1,19 @@
 # CHANGELOG
 
+
+## [0.6.0] — 2026-01-13 (Dashboard & Monitoring)
+
+### Добавлено
+- **Streamlit Multi-page App**: Дашборд разделен на страницы: "Overview", "Table Details", "Data Quality", "Performance Trends".
+- **Advanced Monitoring**: Отслеживание объемов вставок, обновлений и ошибок валидации на уровне каждой таблицы.
+- **Chaos Runner**: Инструмент `scripts/chaos_runner.py` для тестирования отказоустойчивости мониторинга (monkey-patching).
+- **Timezone Correction**: Поддержка UTC+5 для корректного отображения времени в дашборде.
+- **Legacy Cleanup**: Скрипт `scripts/clean_legacy_logs.py` для очистки старых неструктурированных логов.
+
+### Изменено
+- **Asyncpg Compatibility**: Настроено `statement_cache_size=0` для корректной работы с PgBouncer в Supabase.
+- **Volume Visualization**: Графики теперь группируют данные по типу операции (Insert/Update/Error) с цветовым кодированием.
+
 ## [0.5.0] — 2026-01-11 (Security Audit & Refactoring)
 
 ### Добавлено

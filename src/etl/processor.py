@@ -37,6 +37,8 @@ class TableProcessor:
         is_full_refresh = full_refresh or (mode == 'replace')
         start_time = time.time()
         
+
+
         # 1. Извлечение
         col_names, rows = await self.extractor.extract_sheet_data(
             spreadsheet_id, str(gid), range_name, target_table, mapping=mapping
