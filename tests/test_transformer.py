@@ -40,10 +40,16 @@ class TestTransformerFiles:
             with open(path, 'r', encoding='utf-8') as file:
                 sql = file.read()
                 
-            # Проверяем ключевые элементы
-            assert 'INSERT INTO' in sql, f"{f} missing INSERT"
+            # Проверяем ключевые элементы (поддержка MERGE или INSERT)
+            has_insert = 'INSERT INTO' in sql or 'INSERT (' in sql
+            has_merge = 'MERGE INTO' in sql
+            
+            assert has_insert or has_merge, f"{f} missing INSERT or MERGE"
             assert 'SELECT' in sql, f"{f} missing SELECT"
-            assert 'ON CONFLICT' in sql, f"{f} missing ON CONFLICT"
+            # ON CONFLICT is relevant for INSERT, but MERGE handles conflicts differently
+            if has_insert and not has_merge:
+                 assert 'ON CONFLICT' in sql, f"{f} missing ON CONFLICT"
+            
             assert 'md5(' in sql.lower(), f"{f} missing md5 hash generation"
             
             # Проверяем отсутствие старых плейсхолдеров
@@ -53,28 +59,27 @@ class TestTransformerFiles:
 class TestTransformerExecution:
     """Тесты выполнения трансформации."""
 
-    def test_run_executes_sqls(self):
+    @pytest.mark.asyncio
+    async def test_run_executes_sqls(self):
         """Проверяем, что метод run выполняет SQL файлы."""
         transformer = Transformer()
         
-        async def _test():
-            with patch('src.db.connection.DBConnection.execute', new_callable=AsyncMock) as mock_execute:
-                success, errors = await transformer.run()
-                
-                assert success > 0
-                assert errors == 0
-                
-                # Проверяем, что execute вызывался (как минимум 4 раза: 3 транфс + 1 cleanup)
-                assert mock_execute.call_count >= 4
-                
-                # Проверяем аргументы (SQL запросы)
-                calls = mock_execute.call_args_list
-                sqls = [c[0][0] for c in calls]
-                
-                # Проверяем что запускались запросы для разных таблиц
-                assert any('INSERT INTO clients' in sql for sql in sqls)
-                assert any('INSERT INTO sales' in sql for sql in sqls)
-                assert any('INSERT INTO schedule' in sql for sql in sqls)
-                assert any('UPDATE sales' in sql for sql in sqls) # Cleanup
-
-        run_async(_test())
+        with patch('src.db.connection.DBConnection.execute', new_callable=AsyncMock) as mock_execute:
+            success, errors = await transformer.run()
+            
+            assert success > 0
+            assert errors == 0
+            
+            # Проверяем, что execute вызывался (как минимум 4 раза: 3 транфс + 1 cleanup)
+            assert mock_execute.call_count >= 4
+            
+            # Проверяем аргументы (SQL запросы)
+            calls = mock_execute.call_args_list
+            sqls = [c[0][0] for c in calls]
+            print(f"DEBUG SQLS: {sqls}")
+            
+            # Проверяем что запускались запросы для разных таблиц
+            assert any(('INSERT INTO' in sql or 'MERGE INTO' in sql) and 'clients' in sql for sql in sqls)
+            assert any(('INSERT INTO' in sql or 'MERGE INTO' in sql) and 'sales' in sql for sql in sqls)
+            assert any(('INSERT INTO' in sql or 'MERGE INTO' in sql) and 'schedule' in sql for sql in sqls)
+            assert any('UPDATE core.sales' in sql for sql in sqls) # Cleanup

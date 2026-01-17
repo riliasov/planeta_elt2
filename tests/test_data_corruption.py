@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 import asyncio
+import pytest
 
 # Add project root to path
 root_dir = Path(__file__).resolve().parent.parent
@@ -54,6 +55,7 @@ class MockValidator(ContractValidator):
     def validate_dataset(self, rows, name):
         return ValidationResult(is_valid=True, errors=[], total_rows=len(rows), valid_rows=len(rows))
 
+@pytest.mark.asyncio
 async def test_data_corruption_fix():
     print("=== Testing Data Corruption Fix ===")
     

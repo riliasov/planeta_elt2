@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 import logging
+import pytest
 
 # Настройка путей
 root_dir = Path(__file__).resolve().parent.parent
@@ -14,6 +15,7 @@ from src.etl.validator import ContractValidator
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger('test_mapping')
 
+@pytest.mark.asyncio
 async def test_mapping_robustness():
     log.info("Запуск теста устойчивости маппинга...")
     

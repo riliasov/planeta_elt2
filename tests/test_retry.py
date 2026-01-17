@@ -1,4 +1,5 @@
 """Тесты для модуля retry (синхронные тесты)."""
+import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 from src.utils.retry import (
@@ -9,57 +10,54 @@ from src.utils.retry import (
 )
 
 
-def run_async(coro):
-    """Хелпер для запуска async функций в тестах."""
-    return asyncio.get_event_loop().run_until_complete(coro)
-
-
+@pytest.mark.asyncio
 class TestRetryAsync:
-    def test_success_first_attempt(self):
+    async def test_success_first_attempt(self):
         mock_func = AsyncMock(return_value='success')
-        result = run_async(retry_async(mock_func, max_attempts=3))
+        result = await retry_async(mock_func, max_attempts=3)
         assert result == 'success'
         assert mock_func.call_count == 1
     
-    def test_success_after_retry(self):
+    async def test_success_after_retry(self):
         mock_func = AsyncMock(side_effect=[Exception('fail'), 'success'])
-        result = run_async(retry_async(mock_func, max_attempts=3, base_delay=0.01))
+        result = await retry_async(mock_func, max_attempts=3, base_delay=0.01)
         assert result == 'success'
         assert mock_func.call_count == 2
     
-    def test_raises_after_max_attempts(self):
+    async def test_raises_after_max_attempts(self):
         mock_func = AsyncMock(side_effect=Exception('always fails'))
         try:
-            run_async(retry_async(mock_func, max_attempts=2, base_delay=0.01))
+            await retry_async(mock_func, max_attempts=2, base_delay=0.01)
             assert False, "Should have raised RetryError"
         except RetryError as e:
             assert 'Failed after 2 attempts' in str(e)
         assert mock_func.call_count == 2
     
-    def test_on_retry_callback(self):
+    async def test_on_retry_callback(self):
         mock_func = AsyncMock(side_effect=[Exception('fail'), 'success'])
         callback = MagicMock()
         
-        run_async(retry_async(
+        await retry_async(
             mock_func, 
             max_attempts=3, 
             base_delay=0.01,
             on_retry=callback
-        ))
+        )
         
         assert callback.call_count == 1
 
 
+@pytest.mark.asyncio
 class TestWithRetryDecorator:
-    def test_decorator_success(self):
+    async def test_decorator_success(self):
         @with_retry(max_attempts=2, base_delay=0.01)
         async def my_func():
             return 'ok'
         
-        result = run_async(my_func())
+        result = await my_func()
         assert result == 'ok'
     
-    def test_decorator_retry_on_failure(self):
+    async def test_decorator_retry_on_failure(self):
         attempts = []
         
         @with_retry(max_attempts=3, base_delay=0.01)
@@ -69,7 +67,7 @@ class TestWithRetryDecorator:
                 raise ValueError('not yet')
             return 'done'
         
-        result = run_async(my_func())
+        result = await my_func()
         assert result == 'done'
         assert len(attempts) == 2
 

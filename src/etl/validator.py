@@ -64,12 +64,12 @@ class ContractValidator:
         self._contracts_cache[entity_name] = contract
         return contract
 
-    def _get_model_for_contract(self, entity_name: str) -> Type[BaseModel]:
+    def _get_model_for_contract(self, entity_name: str, contract_dict: Optional[dict] = None) -> Type[BaseModel]:
         """Динамически создает Pydantic модель для контракта."""
         if entity_name in self._models_cache:
             return self._models_cache[entity_name]
 
-        contract = self.load_contract(entity_name)
+        contract = contract_dict if contract_dict else self.load_contract(entity_name)
         fields = {}
         
         for col in contract.get('columns', []):
@@ -101,23 +101,64 @@ class ContractValidator:
         return model
 
     def validate_row(self, row: Dict[str, Any], contract: dict, row_index: int) -> List[ValidationError]:
-        """Валидирует одну строку. Частично через Pydantic, частично через кастомную логику (для сложных типов)."""
+        """Валидирует одну строку."""
         errors = []
         
+        # 0. Ручная проверка обязательных полей (для пустых строк и whitespace, которые Pydantic может пропустить)
+        for col_spec in contract.get('columns', []):
+            col_name = col_spec['name']
+            required = col_spec.get('required', False)
+            if not required:
+                continue
+            
+            value = row.get(col_name)
+            if value is None:
+                value = row.get(slugify(col_name))
+            
+            # Если значение отсутствует или это пустая строка (только для required=True)
+            if value is None or (isinstance(value, str) and not str(value).strip()):
+                # Проверяем, не поймает ли это Pydantic (он поймает None, но может пропустить пустую строку)
+                # Для надежности добавляем ошибку здесь, если это пустая строка
+                if isinstance(value, str):
+                    errors.append(ValidationError(
+                        row_index=row_index,
+                        column=col_name,
+                        value=value,
+                        error_type='MISSING_REQUIRED',
+                        message=f'Поле {col_name} обязательно для заполнения'
+                    ))
+
         # 1. Pydantic валидация (базовые типы)
-        model = self._get_model_for_contract(contract.get('name', 'unknown'))
+        # Передаем сам контракт, чтобы не искать его на диске
+        entity = contract.get('entity', 'unknown')
+        model = self._get_model_for_contract(entity, contract_dict=contract)
+        
         try:
             # Используем model_validate или parse_obj (в зависимости от версии)
             model(**row)
         except PydanticValidationError as e:
             for error in e.errors():
                 # Маппинг ошибок Pydantic в наш формат
-                col = error['loc'][0]
+                col = str(error['loc'][0])
+                err_type = error['type']
+                
+                # Маппинг ошибок
+                if err_type == 'missing':
+                    err_type = 'MISSING_REQUIRED'
+                elif err_type == 'int_parsing':
+                    err_type = 'INVALID_INTEGER'
+                elif err_type == 'float_parsing':
+                    err_type = 'INVALID_FLOAT'
+                
+                # Избегаем дублирования ошибок (например, если мы уже добавили manual check)
+                if any(e.column == col and e.error_type == err_type for e in errors):
+                    continue
+
                 errors.append(ValidationError(
                     row_index=row_index,
-                    column=str(col),
-                    value=row.get(str(col)),
-                    error_type=error['type'],
+                    column=col,
+                    value=row.get(col),
+                    error_type=err_type,
                     message=error['msg']
                 ))
 
@@ -127,7 +168,10 @@ class ContractValidator:
             col_type = col_spec.get('type', 'string')
             formats = col_spec.get('format')
             
-            value = row.get(col_name) or row.get(slugify(col_name))
+            value = row.get(col_name)
+            if value is None:
+                value = row.get(slugify(col_name))
+
             if value is None or (isinstance(value, str) and not value.strip()):
                 continue
 

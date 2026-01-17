@@ -12,11 +12,53 @@ from src.etl.validator import ContractValidator, ValidationError, ValidationResu
 class TestContractValidator:
     """Тесты для ContractValidator."""
     
-    @pytest.fixture
-    def validator(self):
-        """Создает валидатор с путем к контрактам."""
-        contracts_dir = Path(__file__).parent.parent / 'src' / 'contracts'
-        return ContractValidator(contracts_dir)
+@pytest.fixture
+def contracts_dir(tmp_path):
+    """Создает временную директорию с контрактами."""
+    d = tmp_path / "contracts"
+    d.mkdir()
+    
+    # Clients contract
+    (d / "clients.json").write_text('{"entity": "Clients", "columns": [{"name": "name", "type": "string"}]}', encoding='utf-8')
+    
+    # Sales contract
+    (d / "sales.json").write_text('''
+    {
+        "entity": "Sales",
+        "columns": [
+            {"name": "дата", "type": "date", "required": true},
+            {"name": "клиент", "type": "string", "required": true},
+            {"name": "продукт", "type": "string", "required": false},
+            {"name": "количество", "type": "integer"},
+            {"name": "полная_стоимость", "type": "money"},
+            {"name": "комментарий", "type": "string", "required": false}
+        ]
+    }
+    ''', encoding='utf-8')
+    
+    # Schedule contract
+    (d / "schedule.json").write_text('''
+    {
+        "entity": "Schedule",
+        "columns": [
+            {"name": "дата", "type": "date"},
+            {"name": "начало", "type": "time"},
+            {"name": "конец", "type": "time"},
+            {"name": "клиент", "type": "string"},
+            {"name": "статус", "type": "string"}
+        ]
+    }
+    ''', encoding='utf-8')
+    
+    return d
+
+@pytest.fixture
+def validator(contracts_dir):
+    """Создает валидатор с путем к временным контрактам."""
+    return ContractValidator(contracts_dir)
+
+class TestContractValidator:
+    """Тесты для ContractValidator."""
     
     # === Тесты загрузки контрактов ===
     
@@ -278,11 +320,6 @@ class TestValidationResult:
 
 class TestEdgeCases:
     """Тесты граничных случаев."""
-    
-    @pytest.fixture
-    def validator(self):
-        contracts_dir = Path(__file__).parent.parent / 'src' / 'contracts'
-        return ContractValidator(contracts_dir)
     
     def test_none_value_in_row(self, validator):
         """None значения обрабатываются корректно."""

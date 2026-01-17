@@ -10,10 +10,7 @@ class TestPipelineE2E(unittest.IsolatedAsyncioTestCase):
     async def test_pipeline_e2e_flow(self):
         """Проверка полного цикла Pipeline -> TableProcessor -> DB."""
         
-        # 1. Подготовка
-        pipeline = ELTPipeline()
-        
-        # Мокаем настройки
+        # 1. Подготовка данных для мока
         mock_sources = {
             "spreadsheets": {
                 "spreadsheet_123": {
@@ -32,46 +29,53 @@ class TestPipelineE2E(unittest.IsolatedAsyncioTestCase):
         with patch("src.etl.pipeline.settings") as mock_settings:
             mock_settings.sources = mock_sources
             mock_settings.use_staging_schema = True
+            mock_settings.google_service_account_json = "dummy_path.json" 
             
-            # Подменяем экстактор на мок
-            # Важно: В реальности GSheetsExtractor возвращает уже СЛАГИФИЦИРОВАННЫЕ заголовки
-            pipeline.extractor.extract_sheet_data = AsyncMock(return_value=(
-                ["id", "klient", "mobilnyy", "tip"], 
-                [["1", "Иван Иванов", "79991234567", "Зал"]]
-            ))
-            
-            # Подменяем лоадер (его внутренние методы работы с базой)
-            pipeline.loader._fetch_existing_hashes = AsyncMock(return_value={})
-            
-            # Патчим DBConnection глобально для всех компонентов внутри этого теста
-            mock_exec = AsyncMock()
-            
-            async def fetch_side_effect(query, *args):
-                if "alembic_version_core" in query:
-                    return [{'version_num': '57df7a9f2a4b'}]
-                if "cleanup_old_dumps" in query:
-                    return [{'deleted': 0}]
-                return []
+            # ВАЖНО: Инициализируем pipeline ВНУТРИ патча, чтобы GSheetsExtractor не лез в реальный файл
+            with patch("src.etl.pipeline.GSheetsExtractor") as MockExtractorCls:
+                # Настраиваем инстанс мока
+                mock_extractor_instance = MockExtractorCls.return_value
+                mock_extractor_instance.extract_sheet_data = AsyncMock(return_value=(
+                    ["id", "klient", "mobilnyy", "tip"], 
+                    [["1", "Иван Иванов", "79991234567", "Зал"]]
+                ))
 
-            mock_fetch = AsyncMock(side_effect=fetch_side_effect)
-            
-            # Чтобы DBConnection.execute и fetch работали во всех модулях
-            with patch("src.db.connection.DBConnection.execute", side_effect=mock_exec), \
-                 patch("src.db.connection.DBConnection.fetch", side_effect=mock_fetch), \
-                 patch("src.db.connection.DBConnection.get_connection", new_callable=AsyncMock) as mock_get_conn:
+                pipeline = ELTPipeline()
+                # Восстанавливаем ссылку на мок-экстрактор
+                pipeline.extractor = mock_extractor_instance
                 
-                # Настройка контекстного менеджера соединения
-                mock_conn = MagicMock()
-                mock_conn.executemany = AsyncMock()
-                mock_conn.execute = mock_exec # переиспользуем тот же мок
+                # Подменяем лоадер (его внутренние методы работы с базой)
+                pipeline.loader._fetch_existing_hashes = AsyncMock(return_value={})
                 
-                mock_pool_acquire = MagicMock()
-                mock_pool_acquire.__aenter__ = AsyncMock(return_value=mock_conn)
-                mock_pool_acquire.__aexit__ = AsyncMock(return_value=None)
-                mock_get_conn.return_value = mock_pool_acquire
+                # Патчим DBConnection глобально для всех компонентов внутри этого теста
+                mock_exec = AsyncMock()
+                
+                async def fetch_side_effect(query, *args):
+                    if "alembic_version_core" in query:
+                        return [{'version_num': '57df7a9f2a4b'}]
+                    if "cleanup_old_dumps" in query:
+                        return [{'deleted': 0}]
+                    return []
 
-                # 3. Запуск
-                await pipeline.run(scope='current', skip_transform=True, run_exports=False)
+                mock_fetch = AsyncMock(side_effect=fetch_side_effect)
+                
+                # Чтобы DBConnection.execute и fetch работали во всех модулях
+                with patch("src.db.connection.DBConnection.execute", side_effect=mock_exec), \
+                     patch("src.db.connection.DBConnection.fetch", side_effect=mock_fetch), \
+                     patch("src.db.connection.DBConnection.get_connection", new_callable=AsyncMock) as mock_get_conn:
+                    
+                    # Настройка контекстного менеджера соединения
+                    mock_conn = MagicMock()
+                    mock_conn.executemany = AsyncMock()
+                    mock_conn.execute = mock_exec 
+                    
+                    mock_pool_acquire = MagicMock()
+                    mock_pool_acquire.__aenter__ = AsyncMock(return_value=mock_conn)
+                    mock_pool_acquire.__aexit__ = AsyncMock(return_value=None)
+                    mock_get_conn.return_value = mock_pool_acquire
+
+                    # 3. Запуск
+                    await pipeline.run(scope='current', skip_transform=True, run_exports=False)
             
             # 4. Проверки
             print(f"DEBUG: Processor stats: {pipeline._run_stats}")
