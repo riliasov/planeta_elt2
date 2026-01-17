@@ -9,6 +9,8 @@ from src.etl.transformer import Transformer
 from src.etl.exporter import DataMartExporter
 from src.etl.validator import ContractValidator
 from src.etl.processor import TableProcessor
+from src.etl.quality import DataQualityChecker
+from src.utils.notifications import NotificationService
 from src.db.connection import DBConnection
 
 log = logging.getLogger('pipeline')
@@ -28,6 +30,8 @@ class ELTPipeline:
         self.processor = TableProcessor(
             self.extractor, self.loader, self.validator, self.run_id
         )
+        self.quality_checker = DataQualityChecker()
+        self.notifier = NotificationService()
         
         self._run_stats = {
             'tables_processed': 0,
@@ -60,6 +64,10 @@ class ELTPipeline:
         try:
             if not skip_load:
                 await self._run_load_phase(full_refresh, scope)
+                
+                # Фаза качества данных (Data Quality)
+                if not dry_run:
+                    await self._run_quality_phase(scope)
             else:
                 log.info("Пропуск фазы загрузки (skip_load=True)")
 
@@ -81,6 +89,15 @@ class ELTPipeline:
             duration = time.time() - start_time
             await self._finish_run(status, duration, error_message)
             self._print_summary_table(status, duration)
+            
+            # Отправка уведомления
+            self.notifier.send_summary(
+                run_id=str(self.run_id),
+                status=status,
+                stats=self._run_stats,
+                quality_issues=self.quality_checker.get_summary()['issues']
+            )
+            
             log.info(f"=== Пайплайн завершен за {duration:.2f} сек (статус: {status}) ===")
 
     async def _start_run(self, mode: str):
@@ -127,6 +144,32 @@ class ELTPipeline:
                 log.critical("Таблица миграций 'alembic_version_core' не найдена!")
                 raise RuntimeError("Alembic version table not found. Please run baseline migrations.")
             raise
+
+    async def _run_quality_phase(self, scope: str):
+        """Фаза проверки качества загруженных данных."""
+        log.info("Начало фазы проверки качества данных...")
+        
+        config = settings.sources
+        for spreadsheet_id, sdata in config.get('spreadsheets', {}).items():
+            for sheet_cfg in sdata.get('sheets', []):
+                target_table = sheet_cfg['target_table']
+                if not self._is_in_scope(target_table, scope):
+                    continue
+                
+                pk_field = sheet_cfg.get('pk', '__row_hash')
+                date_cols = sheet_cfg.get('date_columns', [])
+                
+                # Выполняем проверку
+                await self.quality_checker.check_table(
+                    target_table, pk_field, critical_cols=date_cols
+                )
+        
+        summary = self.quality_checker.get_summary()
+        if summary['has_critical_issues']:
+            log.critical("ОБНАРУЖЕНЫ КРИТИЧЕСКИЕ ОШИБКИ КАЧЕСТВА ДАННЫХ. Остановка пайплайна.")
+            raise RuntimeError("Data Quality check failed: critical issues found.")
+        
+        log.info(f"Проверка качества завершена: {summary['issue_count']} предупреждений.")
 
     async def _run_load_phase(self, full_refresh: bool, scope: str = 'all'):
         """Фаза загрузки данных из GSheets в БД."""
