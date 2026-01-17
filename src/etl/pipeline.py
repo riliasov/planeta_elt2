@@ -54,6 +54,9 @@ class ELTPipeline:
         
         await self._start_run('full_refresh' if full_refresh else 'cdc')
         
+        # Проверка версии схемы
+        await self._check_schema_version()
+        
         try:
             if not skip_load:
                 await self._run_load_phase(full_refresh, scope)
@@ -103,6 +106,27 @@ class ELTPipeline:
             )
         except Exception as e:
             log.warning(f"Не удалось обновить статус завершения: {e}")
+
+    async def _check_schema_version(self):
+        """Проверяет текущую версию схемы через таблицу Alembic."""
+        EXPECTED_REVISION = "57df7a9f2a4b" # Initial baseline
+        
+        query = "SELECT version_num FROM alembic_version_core LIMIT 1"
+        try:
+            rows = await DBConnection.fetch(query)
+            current_version = rows[0]['version_num'] if rows else None
+            
+            if current_version != EXPECTED_REVISION:
+                log.critical(f"НЕСОВПАДЕНИЕ ВЕРСИИ СХЕМЫ! Ожидалось: {EXPECTED_REVISION}, Текущая: {current_version}")
+                log.error("Выполните 'alembic upgrade head' перед запуском пайплайна.")
+                raise RuntimeError(f"Database schema version mismatch: {current_version} != {EXPECTED_REVISION}")
+                
+            log.info(f"Версия схемы БД подтверждена: {current_version}")
+        except Exception as e:
+            if "does not exist" in str(e):
+                log.critical("Таблица миграций 'alembic_version_core' не найдена!")
+                raise RuntimeError("Alembic version table not found. Please run baseline migrations.")
+            raise
 
     async def _run_load_phase(self, full_refresh: bool, scope: str = 'all'):
         """Фаза загрузки данных из GSheets в БД."""

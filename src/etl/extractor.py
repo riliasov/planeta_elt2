@@ -107,7 +107,17 @@ class GSheetsExtractor:
                 rows = data[1:]
                 
                 col_names = self._normalize_headers(headers, target_table, mapping)
-                return col_names, rows
+                
+                # Robust Mapping: выравниваем каждую строку под длину заголовков (padding)
+                # Это защищает от zip() truncation в TableProcessor
+                aligned_rows = []
+                expected_len = len(headers)
+                for r in rows:
+                    if len(r) < expected_len:
+                        r.extend([None] * (expected_len - len(r)))
+                    aligned_rows.append(r[:expected_len])
+
+                return col_names, aligned_rows
                 
             except Exception as e:
                 if '429' in str(e):

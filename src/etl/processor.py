@@ -50,8 +50,23 @@ class TableProcessor:
         # 1.5. Audit Trace (Raw Dump)
         await self._dump_raw_data(spreadsheet_id, target_table, col_names, rows)
 
-        # 2. Валидация
-        dict_rows = [dict(zip(col_names, row)) for row in rows]
+        # 2. Валидация и трансформация в словари
+        # Robust Mapping: Сопоставляем только те колонки, которые есть в контракте или маппинге
+        try:
+            contract = self.validator.load_contract(contract_name)
+            contract_cols = {c['name'] for c in contract.get('columns', [])}
+            # Также добавляем слагифицированные имена для надежности
+            contract_cols.update({slugify(c) for c in contract_cols})
+        except FileNotFoundError:
+            log.warning(f"Контракт для {contract_name} не найден. Используем все колонки.")
+            contract_cols = set(col_names)
+
+        dict_rows = []
+        for row in rows:
+            # Создаем словарь только из известных нам колонок
+            row_dict = {k: v for k, v in zip(col_names, row) if k in contract_cols or (mapping and k in mapping.values())}
+            dict_rows.append(row_dict)
+
         val_result = self.validator.validate_dataset(dict_rows, contract_name)
         validation_errors = len(val_result.errors)
         
@@ -63,15 +78,22 @@ class TableProcessor:
             # Проверка порогов
             self._check_error_thresholds(target_table, val_result)
 
+        # Обновляем col_names для загрузчика (только те, что пошли в dict_rows)
+        # Сохраняем порядок!
+        final_col_names = [c for c in col_names if c in contract_cols or (mapping and c in mapping.values())]
+        if not final_col_names:
+            log.error(f"После фильтрации по контракту в {target_table} не осталось колонок!")
+            final_col_names = col_names # Fallback
+
         # 3. Загрузка
         if dry_run:
-            load_stats = await self.loader.calculate_changes(target_table, col_names, rows, pk_field)
+            load_stats = await self.loader.calculate_changes(target_table, final_col_names, rows, pk_field)
             status = 'dry_run'
         elif is_full_refresh:
-            load_stats = await self.loader.load_full_refresh(target_table, col_names, rows)
+            load_stats = await self.loader.load_full_refresh(target_table, final_col_names, rows)
             status = 'full_refresh'
         else:
-            load_stats = await self.loader.load_cdc(target_table, col_names, rows, pk_field)
+            load_stats = await self.loader.load_cdc(target_table, final_col_names, rows, pk_field)
             status = 'cdc'
             
         duration_ms = int((time.time() - start_time) * 1000)
