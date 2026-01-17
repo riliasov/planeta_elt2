@@ -30,16 +30,16 @@ class MockLoader(DataLoader):
         super().__init__()
         self.last_load_call = None
         
-    async def load_cdc(self, table, col_names, rows, pk_field):
+    async def load_cdc(self, table, col_names, rows, pk_field, row_count=None):
         self.last_load_call = {
             'col_names': col_names,
-            'rows': rows,
+            'rows': list(rows), # Consume generator
             'pk_field': pk_field
         }
-        return {'inserted': len(rows)}
+        return {'inserted': row_count or 0}
         
-    async def calculate_changes(self, table, col_names, rows, pk_field): # Mock dry run
-         return await self.load_cdc(table, col_names, rows, pk_field)
+    async def calculate_changes(self, table, col_names, rows, pk_field, row_count=None): # Mock dry run
+         return await self.load_cdc(table, col_names, rows, pk_field, row_count)
 
 class MockValidator(ContractValidator):
     def load_contract(self, name):

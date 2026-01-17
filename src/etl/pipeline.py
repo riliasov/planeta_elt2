@@ -1,6 +1,7 @@
 import logging
 import time
 import uuid
+from pathlib import Path
 from typing import Optional, List, Dict, Any
 from src.config.settings import settings
 from src.etl.extractor import GSheetsExtractor
@@ -77,6 +78,9 @@ class ELTPipeline:
                 log.info("Пропуск фазы трансформации (skip_transform=True)")
             
             if run_exports and not dry_run:
+                # Очистка перед экспортом (или после, порядок не критичен, но лучше не задерживать экспорт)
+                # Сделаем после трансформации
+                await self._run_cleanup_phase()
                 await self._run_export_phase()
                 
             status = 'success'
@@ -124,19 +128,49 @@ class ELTPipeline:
         except Exception as e:
             log.warning(f"Не удалось обновить статус завершения: {e}")
 
+    def _get_expected_revision(self) -> str:
+        """Читает ожидаемую версию из файла Alembic."""
+        # 1. Проверяем явный файл-маркер
+        version_file = Path(__file__).resolve().parent.parent.parent / 'alembic' / '.expected_version'
+        if version_file.exists():
+            return version_file.read_text().strip()
+        
+        # 2. Fallback: читаем HEAD из alembic/versions (последний файл по алфавиту)
+        # Это эвристика, но лучше чем хардкод
+        versions_dir = Path(__file__).resolve().parent.parent.parent / 'alembic' / 'versions'
+        if versions_dir.exists():
+            versions = sorted(versions_dir.glob('*.py'))
+            if versions:
+                # Ищем Revision ID внутри файла
+                try:
+                    with open(versions[-1], 'r', encoding='utf-8') as f:
+                        for line in f:
+                            if line.strip().startswith('Revision ID:'):
+                                return line.split(':')[1].strip()
+                except Exception as e:
+                    log.warning(f"Не удалось распарсить версию из файла {versions[-1]}: {e}")
+
+        # Если совсем ничего не нашли, возвращаем старый хардкод как fallback последней надежды
+        log.warning("Не удалось определить версию динамически. Использую fallback.")
+        return "57df7a9f2a4b"
+
     async def _check_schema_version(self):
         """Проверяет текущую версию схемы через таблицу Alembic."""
-        EXPECTED_REVISION = "57df7a9f2a4b" # Initial baseline
-        
+        try:
+            expected_revision = self._get_expected_revision()
+        except Exception as e:
+            log.warning(f"Ошибка определения ожидаемой версии: {e}")
+            expected_revision = "57df7a9f2a4b"
+
         query = "SELECT version_num FROM alembic_version_core LIMIT 1"
         try:
             rows = await DBConnection.fetch(query)
             current_version = rows[0]['version_num'] if rows else None
             
-            if current_version != EXPECTED_REVISION:
-                log.critical(f"НЕСОВПАДЕНИЕ ВЕРСИИ СХЕМЫ! Ожидалось: {EXPECTED_REVISION}, Текущая: {current_version}")
+            if current_version != expected_revision:
+                log.critical(f"НЕСОВПАДЕНИЕ ВЕРСИИ СХЕМЫ! Ожидалось: {expected_revision}, Текущая: {current_version}")
                 log.error("Выполните 'alembic upgrade head' перед запуском пайплайна.")
-                raise RuntimeError(f"Database schema version mismatch: {current_version} != {EXPECTED_REVISION}")
+                raise RuntimeError(f"Database schema version mismatch: {current_version} != {expected_revision}")
                 
             log.info(f"Версия схемы БД подтверждена: {current_version}")
         except Exception as e:
@@ -267,6 +301,18 @@ class ELTPipeline:
                 )
             except Exception as e:
                 log.error(f"Ошибка экспорта витрины {dm.get('view')}: {e}")
+
+    async def _run_cleanup_phase(self):
+        """Очистка устаревших данных из raw.sheets_dump."""
+        log.info("Запуск очистки устаревших дампов...")
+        try:
+            # Вызываем raw.cleanup_old_dumps(30)
+            rows = await DBConnection.fetch("SELECT raw.cleanup_old_dumps(30) as deleted")
+            deleted = rows[0]['deleted'] if rows else 0
+            if deleted > 0:
+                log.info(f"Удалено {deleted} устаревших дампов (старше 30 дней).")
+        except Exception as e:
+            log.warning(f"Ошибка очистки дампов: {e}")
 
     def _print_summary_table(self, status: str, duration: float):
         if not self._table_run_details: return

@@ -6,6 +6,7 @@ from src.etl.loader import DataLoader
 from src.etl.validator import ContractValidator, ValidationResult
 from src.db.connection import DBConnection
 from src.config.settings import settings
+from src.utils.helpers import slugify
 
 log = logging.getLogger('processor')
 
@@ -78,22 +79,38 @@ class TableProcessor:
             # Проверка порогов
             self._check_error_thresholds(target_table, val_result)
 
-        # Обновляем col_names для загрузчика (только те, что пошли в dict_rows)
-        # Сохраняем порядок!
+        # Обновляем col_names для загрузчика (только те, что пошли в dict_rows + PK обязательно)
         final_col_names = [c for c in col_names if c in contract_cols or (mapping and c in mapping.values())]
+        
+        # Гарантируем, что PK поле останется, если оно есть в исходных данных
+        if pk_field in col_names and pk_field not in final_col_names:
+            final_col_names.append(pk_field)
+
         if not final_col_names:
             log.error(f"После фильтрации по контракту в {target_table} не осталось колонок!")
             final_col_names = col_names # Fallback
 
+        # CRITICAL FIX: Пересобираем rows, чтобы значения соответствовали final_col_names
+        # Ранее мы фильтровали имена колонок, но передавали сырые rows, что вызывало смещение.
+        final_indices = [col_names.index(c) for c in final_col_names]
+        
+        # Optimization: Use generator to save memory (don't duplicate full dataset)
+        def row_generator():
+            for r in rows:
+                yield [r[i] for i in final_indices]
+        
+        final_rows = row_generator()
+        row_count_val = len(rows)
+
         # 3. Загрузка
         if dry_run:
-            load_stats = await self.loader.calculate_changes(target_table, final_col_names, rows, pk_field)
+            load_stats = await self.loader.calculate_changes(target_table, final_col_names, final_rows, pk_field, row_count=row_count_val)
             status = 'dry_run'
         elif is_full_refresh:
-            load_stats = await self.loader.load_full_refresh(target_table, final_col_names, rows)
+            load_stats = await self.loader.load_full_refresh(target_table, final_col_names, final_rows, row_count=row_count_val)
             status = 'full_refresh'
         else:
-            load_stats = await self.loader.load_cdc(target_table, final_col_names, rows, pk_field)
+            load_stats = await self.loader.load_cdc(target_table, final_col_names, final_rows, pk_field, row_count=row_count_val)
             status = 'cdc'
             
         duration_ms = int((time.time() - start_time) * 1000)

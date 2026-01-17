@@ -1,7 +1,7 @@
 import logging
 import asyncio
 import re
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Iterable, Optional
 from src.db.connection import DBConnection
 from src.config.settings import settings
 from src.utils.cleaning import normalize_numeric_string
@@ -57,7 +57,7 @@ class DataLoader:
         
         return full_row_str, row_hash
 
-    async def load_full_refresh(self, table: str, col_names: List[str], rows: List[List[Any]]) -> Dict[str, int]:
+    async def load_full_refresh(self, table: str, col_names: List[str], rows: Iterable[List[Any]], row_count: Optional[int] = None) -> Dict[str, int]:
         """Полная перезагрузка таблицы: TRUNCATE + INSERT."""
         if '.' not in table:
              table = self._validate_identifier(table)
@@ -65,7 +65,12 @@ class DataLoader:
         target_table_sql = self._format_table_name(table)
         validated_cols = [self._validate_identifier(c) for c in col_names]
         
-        log.info(f"Начало полной перезагрузки {target_table_sql} ({len(rows)} строк)")
+        # Determine count for logging (handle Generator)
+        count_str = f"{row_count} строк" if row_count is not None else "? строк"
+        if row_count is None and isinstance(rows, list):
+             count_str = f"{len(rows)} строк"
+
+        log.info(f"Начало полной перезагрузки {target_table_sql} ({count_str})")
         stats = {'inserted': 0, 'errors': 0}
         
         async with await DBConnection.get_connection() as conn:
@@ -103,15 +108,18 @@ class DataLoader:
         log.info(f"Полная перезагрузка {table} завершена: {stats}")
         return stats
 
-    async def load_cdc(self, table: str, col_names: List[str], rows: List[List[Any]], pk_field: str = '__row_hash') -> Dict[str, int]:
-        """Инкрементальная загрузка с использованием CDC."""
+    async def load_cdc(self, table: str, col_names: List[str], rows: Iterable[List[Any]], pk_field: str = '__row_hash', row_count: Optional[int] = None) -> Dict[str, int]:
         """Инкрементальная загрузка с использованием CDC."""
         if '.' not in table:
              table = self._validate_identifier(table)
         pk_field = self._validate_identifier(pk_field)
         target_table_sql = self._format_table_name(table)
         
-        log.info(f"CDC загрузка в {target_table_sql} ({len(rows)} строк из источника) [PK: {pk_field}]")
+        count_str = f"{row_count} строк" if row_count is not None else "? строк"
+        if row_count is None and isinstance(rows, list):
+             count_str = f"{len(rows)} строк"
+
+        log.info(f"CDC загрузка в {target_table_sql} ({count_str} из источника) [PK: {pk_field}]")
         
         existing_hashes = await self._fetch_existing_hashes(table, pk_field)
         processor = CDCProcessor(existing_hashes)
@@ -145,15 +153,18 @@ class DataLoader:
         await self._apply_cdc_changes(table, processor, col_names, pk_field)
         return cdc_stats
 
-    async def calculate_changes(self, table: str, col_names: List[str], rows: List[List[Any]], pk_field: str = '__row_hash') -> Dict[str, int]:
-        """Вычисляет статистику изменений без применения (для dry-run)."""
+    async def calculate_changes(self, table: str, col_names: List[str], rows: Iterable[List[Any]], pk_field: str = '__row_hash', row_count: Optional[int] = None) -> Dict[str, int]:
         """Вычисляет статистику изменений без применения (для dry-run)."""
         if '.' not in table:
              table = self._validate_identifier(table)
         target_table_sql = self._format_table_name(table)
         pk_field = self._validate_identifier(pk_field)
         
-        log.info(f"🔍 [DRY-RUN] Расчет изменений для {target_table_sql} [PK: {pk_field}]")
+        count_str = f"{row_count} строк" if row_count is not None else "? строк"
+        if row_count is None and isinstance(rows, list):
+             count_str = f"{len(rows)} строк"
+
+        log.info(f"🔍 [DRY-RUN] Расчет изменений для {target_table_sql} ({count_str}) [PK: {pk_field}]")
         
         existing_hashes = await self._fetch_existing_hashes(table, pk_field)
         processor = CDCProcessor(existing_hashes)

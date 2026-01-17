@@ -74,7 +74,7 @@ class DataQualityChecker:
             SELECT rows_extracted 
             FROM {settings.schema_ops}.elt_table_stats 
             WHERE table_name LIKE '%{table_base}'
-            ORDER BY created_at DESC LIMIT 5
+            ORDER BY created_at DESC LIMIT {settings.dq_history_window}
         """
         
         try:
@@ -86,10 +86,21 @@ class DataQualityChecker:
 
             avg_hist = sum(r['rows_extracted'] for r in hist_rows) / len(hist_rows)
             
+            # Адаптивный порог
+            if avg_hist < 100:
+                threshold = settings.dq_anomaly_threshold_small  # 0.5
+            elif avg_hist > 10000:
+                threshold = settings.dq_anomaly_threshold_large  # 0.1
+            else:
+                # Линейная интерполяция между 100 и 10000
+                # Formula: y = y1 + (x - x1) * (y2 - y1) / (x2 - x1)
+                slope = (settings.dq_anomaly_threshold_large - settings.dq_anomaly_threshold_small) / (10000 - 100)
+                threshold = settings.dq_anomaly_threshold_small + (avg_hist - 100) * slope
+
             if avg_hist > 0:
                 diff_pct = abs(curr_rows - avg_hist) / avg_hist
-                if diff_pct > 0.5: # Порог 50%
-                    msg = f"Аномалия объема: получено {curr_rows} строк, среднее за 5 запусков — {avg_hist:.1f} (отклонение {diff_pct:.1%})"
+                if diff_pct > threshold: 
+                    msg = f"Аномалия объема: получено {curr_rows} строк, среднее за {len(hist_rows)} запусков — {avg_hist:.1f} (отклонение {diff_pct:.1%}, порог {threshold:.0%})"
                     self.issues.append(QualityIssue(table, 'VOLUME_ANOMALY', msg, 'warning'))
                     log.warning(f"⚠ {table}: {msg}")
         except Exception as e:

@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     
     # Sources config
     _sources_config: Dict[str, Any] = {}
+    
+    # DQ Settings
+    dq_anomaly_threshold_small: float = 0.5  # for small tables (< 100 rows)
+    dq_anomaly_threshold_large: float = 0.1  # for large tables (> 10000 rows)
+    dq_history_window: int = 5    # Compare with last 5 runs
 
     @property
     def database_dsn(self) -> str:

@@ -45,7 +45,15 @@ class TestPipelineE2E(unittest.IsolatedAsyncioTestCase):
             
             # Патчим DBConnection глобально для всех компонентов внутри этого теста
             mock_exec = AsyncMock()
-            mock_fetch = AsyncMock(return_value=[])
+            
+            async def fetch_side_effect(query, *args):
+                if "alembic_version_core" in query:
+                    return [{'version_num': '57df7a9f2a4b'}]
+                if "cleanup_old_dumps" in query:
+                    return [{'deleted': 0}]
+                return []
+
+            mock_fetch = AsyncMock(side_effect=fetch_side_effect)
             
             # Чтобы DBConnection.execute и fetch работали во всех модулях
             with patch("src.db.connection.DBConnection.execute", side_effect=mock_exec), \
