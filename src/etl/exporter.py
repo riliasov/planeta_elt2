@@ -48,7 +48,7 @@ class DataMartExporter:
         # 2. Prepare data for Sheets
         # Convert datetimes to strings
         for col in df.columns:
-            if pd.api.types.is_datetime64_any_dtype(df[col]) or pd.api.types.is_timezone_aware_dtype(df[col]):
+            if pd.api.types.is_datetime64_any_dtype(df[col]):
                 df[col] = df[col].dt.strftime('%d.%m.%Y %H:%M')
             elif df[col].dtype == 'object':
                  df[col] = df[col].fillna('')

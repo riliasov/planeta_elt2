@@ -25,37 +25,43 @@ def normalize_value(val) -> str:
 
 
 class CDCProcessor:
-    """Обработчик CDC для сравнения данных между источником и БД."""
+    """Обработчик CDC для сравнения данных между источником и БД.
+    
+    Разделяет понятия:
+    - pk (Primary Key): уникальный идентификатор строки для поиска (стабильный).
+    - row_hash (Content Hash): хеш содержимого для детекции изменений (динамичный).
+    """
     
     def __init__(self, existing_hashes: Dict[str, str]):
+        """existing_hashes: словарь {pk: hash} из текущего состояния БД."""
         self.existing_hashes = existing_hashes
         self.to_insert: List[Dict] = []
         self.to_update: List[Dict] = []
         self.to_delete: List[str] = []
         self.unchanged: int = 0
     
-    def process_row(self, legacy_id: str, row_hash: str, row_data: Dict):
+    def process_row(self, pk: str, row_hash: str, row_data: Dict):
         """Обрабатывает одну строку и определяет действие."""
-        if legacy_id in self.existing_hashes:
-            if self.existing_hashes[legacy_id] == row_hash:
+        if pk in self.existing_hashes:
+            if self.existing_hashes[pk] == row_hash:
                 self.unchanged += 1
             else:
                 self.to_update.append({
-                    'legacy_id': legacy_id,
+                    'pk': pk,
                     'hash': row_hash,
                     'data': row_data
                 })
-            # Удаляем из existing, чтобы потом найти удалённые
-            del self.existing_hashes[legacy_id]
+            # Удаляем из существующих, чтобы в конце остались только удаленные в источнике
+            del self.existing_hashes[pk]
         else:
             self.to_insert.append({
-                'legacy_id': legacy_id,
+                'pk': pk,
                 'hash': row_hash,
                 'data': row_data
             })
     
     def finalize(self):
-        """Все оставшиеся в existing_hashes ID считаются удалёнными."""
+        """Все оставшиеся в existing_hashes ID считаются удалёнными в источнике."""
         self.to_delete = list(self.existing_hashes.keys())
     
     def get_stats(self) -> Dict[str, int]:

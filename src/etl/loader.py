@@ -12,15 +12,27 @@ log = logging.getLogger('loader')
 class DataLoader:
     def __init__(self):
         self.schema_prefix = 'staging.' if settings.use_staging_schema else ''
-        # Разрешаем буквы, цифры, подчеркивание и точки (для schema.table)
-        self._ident_pattern = re.compile(r'^[a-zA-Z0-9_.]+$')
+        # Строгая валидация: начинается с буквы, только буквы, цифры и подчеркивание.
+        self._single_ident_pattern = re.compile(r'^[a-zA-Z][a-zA-Z0-9_]*$')
 
     def _validate_identifier(self, ident: str) -> str:
         """Проверяет идентификатор (таблица/колонка) на наличие инъекций."""
         if not ident:
             raise ValueError("Идентификатор не может быть пустым")
-        if not self._ident_pattern.match(ident):
-            raise ValueError(f"Недопустимый идентификатор: {ident}")
+        
+        # Если это полное имя таблицы со схемой (schema.table)
+        if '.' in ident:
+            parts = ident.split('.')
+            if len(parts) != 2:
+                raise ValueError(f"Недопустимый формат идентификатора (ожидалось schema.table): {ident}")
+            for part in parts:
+                if not self._single_ident_pattern.match(part):
+                    raise ValueError(f"Недопустимая часть идентификатора: {part}")
+        else:
+            # Одиночный идентификатор (колонка или таблица без схемы)
+            if not self._single_ident_pattern.match(ident):
+                raise ValueError(f"Недопустимый идентификатор: {ident}")
+        
         return ident
 
     def _format_table_name(self, table: str) -> str:
@@ -206,7 +218,7 @@ class DataLoader:
             if processor.to_update:
                 for item in processor.to_update:
                     data = item['data']
-                    pk_val = item['legacy_id']
+                    pk_val = item['pk']
                     
                     set_parts = []
                     vals = []

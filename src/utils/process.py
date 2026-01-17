@@ -2,99 +2,106 @@ import os
 import sys
 import signal
 import logging
+import time
+import fcntl
 from pathlib import Path
 
 log = logging.getLogger('process')
 
 class ProcessLock:
-    """Управление блокировкой процесса через PID-файл."""
+    """Управление блокировкой процесса через POSIX flock."""
     
     def __init__(self, name: str = "elt_pipeline"):
         self.lock_dir = Path("logs")
         self.lock_dir.mkdir(exist_ok=True)
-        self.lock_file = self.lock_dir / f"{name}.pid"
+        self.lock_file = self.lock_dir / f"{name}.lock"
         self.name = name
+        self.lock_fd = None
 
     def check_and_lock(self, kill_conflicts: bool = False, timeout: int = 0):
-        """Проверяет наличие lock-файла и создает его.
+        """Проверяет наличие лока и устанавливает его через fcntl.flock.
         
         Args:
-            kill_conflicts: Если True, убивает процесс, удерживающий лок.
+            kill_conflicts: Если True, пытается убить процесс, удерживающий лок.
             timeout: Время ожидания освобождения лока в секундах.
         """
-        import time
         start_time = time.time()
         
         while True:
-            if self.lock_file.exists():
-                try:
-                    with open(self.lock_file, "r") as f:
-                        old_pid = int(f.read().strip())
-                    
-                    if self._is_running(old_pid):
-                        if kill_conflicts:
-                            log.warning(f"Обнаружен конфликт: процесс {old_pid} уже запущен. Завершаю его...")
-                            os.kill(old_pid, signal.SIGTERM)
-                            time.sleep(1)
-                            if self._is_running(old_pid):
-                                log.warning(f"Процесс {old_pid} не завершился по SIGTERM. Принудительно завершаю (SIGKILL)...")
-                                os.kill(old_pid, signal.SIGKILL)
-                            # Лок должен удалиться или мы перезапишем его, если процесс убит
-                        elif timeout > 0:
-                            if time.time() - start_time > timeout:
-                                log.error(f"Таблицы заблокированы процессом {old_pid}. Превышено время ожидания ({timeout}с).")
-                                sys.exit(1)
-                            log.info(f"Ожидание завершения процесса {old_pid}... ({int(time.time() - start_time)}/{timeout}с)")
-                            time.sleep(1)
-                            continue
-                        else:
-                            log.error(f"Критическая ошибка: Процесс '{self.name}' уже запущен (PID: {old_pid}).")
-                            log.error("Используйте --wait [sec] для ожидания или --kill-conflicts для перезапуска.")
-                            sys.exit(1)
-                    else:
-                        # Процесс мертв, но файл остался (stale lock)
-                        log.warning(f"Найден устаревший lock-файл от PID {old_pid} (процесс не найден).")
-                except (ValueError, OSError):
-                    # Файл битый
-                    pass
-                
-                # Если пришли сюда - лок можно удалять/перезаписывать (либо убили, либо старый, либо битый)
-                try:
-                    self.lock_file.unlink()
-                except OSError:
-                    pass
-
-            # Пытаемся создать лок
+            # Открываем файл для чтения/записи (создаем если нет)
+            self.lock_fd = open(self.lock_file, "a+")
+            
             try:
-                # Используем 'x' mode для атомарного создания, но это не гарантирует атомарность на всех ФС.
-                # Для простоты: пишем и проверяем.
-                with open(self.lock_file, "w") as f:
-                    f.write(str(os.getpid()))
-                log.debug(f"Создан lock-файл: {self.lock_file} (PID: {os.getpid()})")
-                break
-            except OSError as e:
-                # Гонка?
-                if timeout > 0 and (time.time() - start_time < timeout):
-                    time.sleep(0.5)
+                # Пытаемся взять эксклюзивный неблокирующий лок
+                fcntl.flock(self.lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                
+                # Лок взят успешно!
+                # Очищаем файл и записываем текущий PID
+                self.lock_fd.seek(0)
+                self.lock_fd.truncate()
+                self.lock_fd.write(str(os.getpid()))
+                self.lock_fd.flush()
+                log.debug(f"Лок '{self.name}' получен успешно (PID: {os.getpid()})")
+                return
+                
+            except BlockingIOError:
+                # Файл заблокирован другим процессом
+                self.lock_fd.seek(0)
+                try:
+                    old_pid_str = self.lock_fd.read().strip()
+                    old_pid = int(old_pid_str) if old_pid_str else None
+                except ValueError:
+                    old_pid = None
+                
+                if kill_conflicts and old_pid:
+                    log.warning(f"Конфликт лока '{self.name}': процесс {old_pid} уже запущен. Пытаюсь завершить...")
+                    try:
+                        os.kill(old_pid, signal.SIGTERM)
+                        time.sleep(1)
+                        if self._is_running(old_pid):
+                            log.warning(f"Процесс {old_pid} не сдается. Применяю SIGKILL...")
+                            os.kill(old_pid, signal.SIGKILL)
+                            time.sleep(0.5)
+                    except (ProcessLookupError, OSError):
+                        pass # Процесс уже мертв
+                
+                elif timeout > 0:
+                    elapsed = time.time() - start_time
+                    if elapsed > timeout:
+                        log.error(f"Превышено время ожидания лока '{self.name}' ({timeout}с).")
+                        sys.exit(1)
+                    
+                    log.info(f"Ожидание освобождения лока '{self.name}' (PID: {old_pid or '??'})... {int(elapsed)}/{timeout}с")
+                    self.lock_fd.close()
+                    time.sleep(1)
                     continue
-                log.error(f"Не удалось создать lock-файл: {e}")
-                sys.exit(1)
+                else:
+                    log.error(f"Критическая ошибка: Пайплайн '{self.name}' уже запущен (PID: {old_pid or '??'}).")
+                    log.error("Используйте --wait [sec] или --kill-conflicts.")
+                    sys.exit(1)
 
     def unlock(self):
-        """Удаляет lock-файл."""
-        try:
-            if self.lock_file.exists():
-                self.lock_file.unlink()
-                log.debug(f"Lock-файл удален: {self.lock_file}")
-        except OSError as e:
-            log.error(f"Ошибка при удалении lock-файла: {e}")
+        """Освобождает лок и закрывает файл."""
+        if self.lock_fd:
+            try:
+                # fcntl.flock(self.lock_fd, fcntl.LOCK_UN) # Разблокировка произойдет автоматически при close
+                self.lock_fd.close()
+                if self.lock_file.exists():
+                    try:
+                        self.lock_file.unlink()
+                    except OSError:
+                        pass
+                log.debug(f"Лок '{self.name}' освобожден.")
+            except Exception as e:
+                log.error(f"Ошибка при освобождении лока: {e}")
+            finally:
+                self.lock_fd = None
 
     def _is_running(self, pid: int) -> bool:
         """Проверяет запущен ли процесс с данным PID."""
-        if pid <= 0:
-            return False
+        if pid <= 0: return False
         try:
             os.kill(pid, 0)
             return True
-        except OSError:
+        except (OSError, ProcessLookupError):
             return False
