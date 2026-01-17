@@ -9,3 +9,6 @@ pydantic-settings
 streamlit
 plotly
 pandas
+alembic
+sqlalchemy
+greenlet

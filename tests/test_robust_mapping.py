@@ -18,7 +18,12 @@ async def test_mapping_robustness():
     log.info("Запуск теста устойчивости маппинга...")
     
     # Мокаем зависимости
-    extractor = GSheetsExtractor()
+    # ВАЖНО: Мокаем _authenticate, чтобы не требовался реальный creds.json
+    from unittest.mock import patch, MagicMock
+    
+    with patch('src.etl.extractor.GSheetsExtractor._authenticate'):
+        extractor = GSheetsExtractor()
+        # Mock drive_service/gc if needed manually, but for this test we mock extract_sheet_data anyway
     loader = DataLoader() # Мы будем использовать его в dry-run
     validator = ContractValidator()
     
