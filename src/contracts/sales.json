@@ -1,62 +1,58 @@
 {
     "entity": "Sales",
-    "description": "Реестр продаж товаров и услуг.",
+    "description": "Реестр продаж (sales_hst).",
     "columns": [
         {
-            "name": "дата",
+            "name": "date",
             "type": "date",
             "format": [
                 "DD.MM.YY",
                 "DD.MM.YYYY",
                 "YYYY-MM-DD"
             ],
-            "required": true,
-            "description": "Дата продажи"
+            "required": true
         },
         {
-            "name": "клиент",
+            "name": "client_full",
             "type": "string",
-            "required": true,
-            "description": "ФИО покупателя (ссылка на Clients)"
+            "required": true
         },
         {
-            "name": "продукт",
+            "name": "product",
             "type": "string",
-            "required": true,
-            "description": "Наименование товара/услуги"
+            "required": true
         },
         {
-            "name": "количество",
+            "name": "product_type",
+            "type": "string",
+            "required": false
+        },
+        {
+            "name": "product_category",
+            "type": "string",
+            "required": false
+        },
+        {
+            "name": "quantity",
             "type": "integer",
             "required": false,
             "default": 1
         },
         {
-            "name": "полная_стоимость",
+            "name": "full_price",
             "type": "money",
             "required": false
         },
         {
-            "name": "итого",
+            "name": "final_price",
             "type": "money",
-            "required": false,
-            "description": "Фактическая сумма оплаты"
-        },
-        {
-            "name": "тип",
-            "type": "string",
-            "required": false
-        },
-        {
-            "name": "категория",
-            "type": "string",
             "required": false
         }
     ],
     "unique_keys": [
-        "дата",
-        "клиент",
-        "продукт",
-        "полная_стоимость"
+        "date",
+        "client_full",
+        "product",
+        "full_price"
     ]
 }

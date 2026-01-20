@@ -79,9 +79,15 @@ class GSheetsExtractor:
             log.info(f"Таблица {spreadsheet_id[:8]}... не изменялась, пропуск.")
             return False
 
+    # CDC метаданные для smart header detection
+    CDC_METADATA_COLS = {'record_id', 'content_hash', 'created_at', 'updated_at', 'updated_by'}
+
     async def extract_sheet_data(self, spreadsheet_id: str, gid: str, range_name: str, target_table: str, 
                                  check_modified: bool = False, mapping: Optional[Dict[str, str]] = None) -> Tuple[List[str], List[List[Any]]]:
-        """Извлекает данные из конкретного листа с повторными попытками."""
+        """Извлекает данные из конкретного листа с повторными попытками.
+        
+        Если range_name='auto', автоматически находит строку с CDC метаданными.
+        """
         
         if check_modified and not self.is_spreadsheet_modified(spreadsheet_id):
             log.info(f"Пропуск {target_table} — изменений в таблице не обнаружено.")
@@ -97,25 +103,39 @@ class GSheetsExtractor:
                 if not ws:
                     raise ValueError(f"Лист с GID {gid} не найден в таблице {spreadsheet_id}")
 
-                data = ws.get(range_name)
-                
-                if not data:
-                    log.warning(f"Данные не найдены для {target_table}")
-                    return [], []
-
-                headers = data[0]
-                rows = data[1:]
+                # Smart header detection
+                if range_name.lower() == 'auto':
+                    header_info = self._find_cdc_header_row(ws)
+                    if header_info is None:
+                        raise ValueError(f"CDC header row не найден в {target_table}")
+                    header_row = header_info['header_row']
+                    data_start_row = header_info['data_start_row']
+                    log.info(f"Auto-detected: header row {header_row}, data starts at row {data_start_row}")
+                    
+                    # Читаем заголовки и данные отдельно
+                    headers = ws.row_values(header_row)
+                    data = ws.get(f"A{data_start_row}:ZZ")
+                    rows = data if data else []
+                else:
+                    data = ws.get(range_name)
+                    if not data:
+                        log.warning(f"Данные не найдены для {target_table}")
+                        return [], []
+                    headers = data[0]
+                    rows = data[1:]
                 
                 col_names = self._normalize_headers(headers, target_table, mapping)
                 
                 # Robust Mapping: выравниваем каждую строку под длину заголовков (padding)
-                # Это защищает от zip() truncation в TableProcessor
                 aligned_rows = []
                 expected_len = len(headers)
                 for r in rows:
                     if len(r) < expected_len:
                         r.extend([None] * (expected_len - len(r)))
                     aligned_rows.append(r[:expected_len])
+                
+                # Фильтрация полностью пустых строк
+                aligned_rows = [r for r in aligned_rows if any(cell is not None and str(cell).strip() for cell in r)]
 
                 return col_names, aligned_rows
                 
@@ -129,6 +149,27 @@ class GSheetsExtractor:
                     log.error(f"Ошибка при извлечении данных для {target_table}: {e}")
                     raise
         raise Exception(f"Не удалось извлечь {target_table} после всех попыток.")
+
+    def _find_cdc_header_row(self, worksheet, scan_limit: int = 20) -> Optional[Dict[str, int]]:
+        """Находит строку с CDC метаданными (самую нижнюю если несколько)."""
+        data = worksheet.get(f"A1:ZZ{scan_limit}")
+        if not data:
+            return None
+        
+        last_match = None
+        
+        for row_idx, row in enumerate(data):
+            normalized = {str(cell).strip().lower() for cell in row if cell}
+            found_cols = self.CDC_METADATA_COLS.intersection(normalized)
+            
+            if len(found_cols) == len(self.CDC_METADATA_COLS):
+                last_match = {
+                    "header_row": row_idx + 1,
+                    "data_start_row": row_idx + 2
+                }
+        
+        return last_match
+
 
     def _normalize_headers(self, headers: List[str], table_name: str, mapping: Optional[Dict[str, str]] = None) -> List[str]:
         """Превращает заголовки Sheet в валидные имена колонок Postgres."""

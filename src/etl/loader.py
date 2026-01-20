@@ -108,6 +108,30 @@ class DataLoader:
         log.info(f"Полная перезагрузка {table} завершена: {stats}")
         return stats
 
+    async def fast_batch_insert(self, table: str, col_names: List[str], records: List[tuple], truncate_first: bool = False) -> int:
+        """Быстрая batch-вставка без CDC (для миграций). Возвращает кол-во вставленных строк."""
+        if '.' in table:
+            schema, table_only = table.split('.', 1)
+        else:
+            schema = self.schema_prefix.replace('.', '') if self.schema_prefix else 'public'
+            table_only = table
+        
+        validated_cols = [self._validate_identifier(c) for c in col_names]
+        
+        async with await DBConnection.get_connection() as conn:
+            if truncate_first:
+                await conn.execute(f'TRUNCATE TABLE "{schema}"."{table_only}"')
+            
+            await conn.copy_records_to_table(
+                table_only,
+                schema_name=schema,
+                records=records,
+                columns=validated_cols
+            )
+        
+        log.info(f"fast_batch_insert: {len(records)} записей в {schema}.{table_only}")
+        return len(records)
+
     async def load_cdc(self, table: str, col_names: List[str], rows: Iterable[List[Any]], pk_field: str = '__row_hash', row_count: Optional[int] = None) -> Dict[str, int]:
         """Инкрементальная загрузка с использованием CDC."""
         if '.' not in table:
@@ -216,41 +240,69 @@ class DataLoader:
         async with await DBConnection.get_connection() as conn:
             # INSERTs
             if processor.to_insert:
-                cols_str = ', '.join([f'"{c}"' for c in validated_cols] + ['"_row_index"', '"__row_hash"'])
-                placeholders = ', '.join([f'${i+1}' for i in range(len(validated_cols) + 2)])
-                insert_query = f'INSERT INTO {target_table_sql} ({cols_str}) VALUES ({placeholders})'
+                total = len(processor.to_insert)
+                log.info(f"📥 Вставка {total} строк в {table} (Batch mode)...")
+                
+                prepared_records = []
+                target_cols = validated_cols + ["_row_index", "__row_hash"]
                 
                 for item in processor.to_insert:
                     data = item['data']
                     values = [data.get(c) for c in col_names] + [data.get('_row_index'), item['hash']]
-                    await conn.execute(insert_query, *values)
+                    prepared_records.append(tuple(values))
+
+                if prepared_records:
+                    if '.' in table:
+                        target_schema = table.split('.', 1)[0]
+                        target_table_only = table.split('.', 1)[1]
+                    else:
+                        target_schema = self.schema_prefix.replace('.', '') if self.schema_prefix else None
+                        target_table_only = table
+                        
+                    await conn.copy_records_to_table(
+                        target_table_only,
+                        schema_name=target_schema,
+                        records=prepared_records,
+                        columns=target_cols
+                    )
+                log.info(f"   ✅ Вставка завершена: {total} строк")
 
             # UPDATEs
             if processor.to_update:
-                for item in processor.to_update:
+                total = len(processor.to_update)
+                log.info(f"📝 Обновление {total} строк в {table}...")
+                for idx, item in enumerate(processor.to_update):
                     data = item['data']
                     pk_val = item['pk']
                     
                     set_parts = []
                     vals = []
-                    idx = 1
+                    val_idx = 1
                     for c in col_names:
                         if c == pk_field: continue
-                        set_parts.append(f'"{c}" = ${idx}')
+                        set_parts.append(f'"{c}" = ${val_idx}')
                         vals.append(data.get(c))
-                        idx += 1
+                        val_idx += 1
                     
-                    set_parts.append(f'"__row_hash" = ${idx}')
+                    set_parts.append(f'"__row_hash" = ${val_idx}')
                     vals.append(item['hash'])
-                    idx += 1
+                    val_idx += 1
                     vals.append(pk_val) # PK for WHERE
                     
-                    query = f'UPDATE {target_table_sql} SET {", ".join(set_parts)} WHERE "{pk_field}" = ${idx}'
+                    query = f'UPDATE {target_table_sql} SET {", ".join(set_parts)} WHERE "{pk_field}" = ${val_idx}'
                     await conn.execute(query, *vals)
+                    
+                    if (idx + 1) % 500 == 0:
+                        log.info(f"   💓 Обновлено {idx + 1}/{total} ({(idx + 1) * 100 // total}%)")
+                
+                log.info(f"   ✅ Обновление завершено: {total} строк")
 
             # DELETEs
             if processor.to_delete:
+                total = len(processor.to_delete)
+                log.info(f"🗑️ Удаление {total} строк из {table}...")
                 del_query = f'DELETE FROM {target_table_sql} WHERE "{pk_field}" = $1'
                 for pk_val in processor.to_delete:
                     await conn.execute(del_query, pk_val)
-                log.info(f"Удалено {len(processor.to_delete)} строк из {table}")
+                log.info(f"   ✅ Удаление завершено: {total} строк")
+

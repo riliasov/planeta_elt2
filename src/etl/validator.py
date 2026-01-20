@@ -100,6 +100,15 @@ class ContractValidator:
         self._models_cache[entity_name] = model
         return model
 
+    def _is_empty_row(self, row: Dict[str, Any], contract: dict) -> bool:
+        """Проверяет, являются ли все обязательные поля пустыми (полностью пустая строка)."""
+        required_cols = [c['name'] for c in contract.get('columns', []) if c.get('required', False)]
+        for col_name in required_cols:
+            value = row.get(col_name) or row.get(slugify(col_name))
+            if value is not None and (not isinstance(value, str) or str(value).strip()):
+                return False  # Хотя бы одно обязательное поле заполнено
+        return True  # Все обязательные поля пусты
+
     def validate_row(self, row: Dict[str, Any], contract: dict, row_index: int) -> List[ValidationError]:
         """Валидирует одну строку."""
         errors = []
@@ -216,12 +225,34 @@ class ContractValidator:
         all_errors = []
         valid_count = 0
         
+        # Пороги ошибок (процент + абсолютное значение)
+        MAX_ERROR_RATE = 0.02  # 2%
+        MAX_ABSOLUTE_ERRORS = 100
+        
+        skipped_empty = 0
+        
         for idx, row in enumerate(rows):
+            # Пропускаем полностью пустые строки без логирования ошибок
+            if self._is_empty_row(row, contract):
+                skipped_empty += 1
+                continue
+                
             row_errors = self.validate_row(row, contract, idx)
             if not row_errors:
                 valid_count += 1
             else:
                 all_errors.extend(row_errors)
+        
+        if skipped_empty > 0:
+            log.info(f"Пропущено {skipped_empty} полностью пустых строк")
+        
+        total_rows = len(rows)
+        error_count = total_rows - valid_count
+        error_rate = error_count / total_rows if total_rows > 0 else 0
+        
+        # Проверка порогов
+        if error_count > MAX_ABSOLUTE_ERRORS or error_rate > MAX_ERROR_RATE:
+            log.error(f"Слишком много ошибок валидации: {error_count} ({error_rate*100:.1f}%). Порог: {MAX_ABSOLUTE_ERRORS} или {MAX_ERROR_RATE*100}%")
         
         return ValidationResult(
             is_valid=len(all_errors) == 0,

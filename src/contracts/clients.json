@@ -1,27 +1,24 @@
 {
     "entity": "Clients",
-    "description": "База клиентов центра.",
+    "description": "База клиентов (clients_hst).",
     "columns": [
         {
-            "name": "клиент",
+            "name": "client_full",
             "type": "string",
-            "required": true,
-            "description": "ФИО клиента"
+            "required": true
         },
         {
-            "name": "мобильный",
+            "name": "phone_mobile",
             "type": "string",
-            "required": false,
-            "description": "Номер телефона"
+            "required": false
         },
         {
-            "name": "имя_ребенка",
+            "name": "child_name",
             "type": "string",
-            "required": false,
-            "description": "Имя ребенка"
+            "required": false
         },
         {
-            "name": "дата_рождения_ребенка",
+            "name": "child_birth_date",
             "type": "date",
             "format": [
                 "DD.MM.YYYY",
@@ -30,14 +27,13 @@
             "required": false
         },
         {
-            "name": "тип",
+            "name": "product_type",
             "type": "string",
-            "required": false,
-            "description": "Тип занятий (Бассейн/Зал)"
+            "required": false
         }
     ],
     "unique_keys": [
-        "клиент",
-        "мобильный"
+        "client_full",
+        "phone_mobile"
     ]
 }

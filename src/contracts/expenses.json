@@ -1,48 +1,56 @@
 {
     "entity": "Expenses",
-    "description": "Реестр расходов бизнеса.",
+    "description": "Реестр расходов (expenses_hst).",
     "columns": [
         {
-            "name": "дата",
+            "name": "date",
             "type": "date",
             "format": [
                 "DD.MM.YY",
                 "DD.MM.YYYY"
             ],
-            "required": true,
-            "description": "Дата расхода"
+            "required": true
         },
         {
-            "name": "категория",
-            "type": "string",
-            "required": true,
-            "description": "Категория расхода"
-        },
-        {
-            "name": "описание",
-            "type": "string",
-            "required": false
-        },
-        {
-            "name": "сумма",
+            "name": "amount",
             "type": "money",
-            "required": true,
-            "description": "Сумма расхода"
+            "required": true
         },
         {
-            "name": "способ_оплаты",
+            "name": "expense_type",
             "type": "string",
             "required": false
         },
         {
-            "name": "комментарий",
+            "name": "expense_category",
+            "type": "string",
+            "required": true
+        },
+        {
+            "name": "contractor",
+            "type": "string",
+            "required": false
+        },
+        {
+            "name": "description",
+            "type": "string",
+            "required": false
+        },
+        {
+            "name": "comment",
+            "type": "string",
+            "required": false
+        },
+        {
+            "name": "category_type",
             "type": "string",
             "required": false
         }
     ],
     "unique_keys": [
-        "дата",
-        "категория",
-        "сумма"
+        "date",
+        "expense_category",
+        "amount",
+        "description"
     ]
 }

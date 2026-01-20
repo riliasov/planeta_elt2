@@ -44,6 +44,44 @@ WHEN NOT MATCHED THEN
     );
 
 
--- Источник: clients_hst (если есть)
--- Пока предполагаем что клиенты в основном идут из cur. 
--- Если data_cleaner/schema.py заливает clients_hst, добавим блок.
+-- Источник: clients_hst (исторические отчеты)
+MERGE INTO core.clients AS target
+USING (
+    SELECT DISTINCT ON (legacy_id)
+        md5(COALESCE("client_full"::text, '') || COALESCE("phone_mobile"::text, '')) as legacy_id,
+        "__row_hash" as row_hash,
+        'clients_hst' as source,
+        COALESCE(NULLIF(TRIM("client_full"::text), ''), 'Без имени') as name,
+        COALESCE(NULLIF(TRIM("phone_mobile"::text), ''), '+70000000000') as phone,
+        NULLIF(TRIM("child_name"::text), '') as child_name,
+        CASE 
+            WHEN "child_birth_date"::text ~ '^\d{2}\.\d{2}\.\d{4}$' 
+            THEN TO_DATE("child_birth_date"::text, 'DD.MM.YYYY')
+            ELSE NULL 
+        END as child_dob,
+        NULLIF(TRIM("product_type"::text), '') as status
+    FROM stg_gsheets.clients_hst
+    WHERE NULLIF(TRIM("client_full"::text), '') IS NOT NULL
+    ORDER BY legacy_id
+) AS source
+ON (target.legacy_id = source.legacy_id)
+WHEN MATCHED THEN
+    UPDATE SET
+        row_hash = source.row_hash,
+        source = source.source,
+        name = source.name,
+        phone = source.phone,
+        child_name = source.child_name,
+        child_dob = source.child_dob,
+        status = source.status,
+        is_deleted = FALSE,
+        deleted_at = NULL,
+        updated_at = NOW()
+WHEN NOT MATCHED THEN
+    INSERT (
+        legacy_id, row_hash, source, name, phone, child_name, child_dob, status
+    )
+    VALUES (
+        source.legacy_id, source.row_hash, source.source, source.name, source.phone, 
+        source.child_name, source.child_dob, source.status
+    );

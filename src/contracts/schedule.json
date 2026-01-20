@@ -1,9 +1,9 @@
 {
     "entity": "Schedule",
-    "description": "Расписание занятий.",
+    "description": "Расписание занятий (trainings_hst).",
     "columns": [
         {
-            "name": "дата",
+            "name": "date",
             "type": "date",
             "format": [
                 "DD.MM.",
@@ -14,48 +14,53 @@
             "required": true
         },
         {
-            "name": "начало",
+            "name": "start_time",
             "type": "time",
             "required": true,
             "default": "09:00"
         },
         {
-            "name": "конец",
+            "name": "end_time",
             "type": "time",
             "required": true,
             "default": "09:30"
         },
         {
-            "name": "клиент",
+            "name": "employee",
+            "type": "string",
+            "required": false
+        },
+        {
+            "name": "client_full",
             "type": "string",
             "required": false,
             "description": "ФИО клиента"
         },
         {
-            "name": "статус",
+            "name": "status",
             "type": "string",
             "required": true,
             "default": "Свободно"
         },
         {
-            "name": "тип",
+            "name": "product_type",
             "type": "string",
             "required": false
         },
         {
-            "name": "категория",
+            "name": "product_category",
             "type": "string",
             "required": false
         },
         {
-            "name": "комментарий",
+            "name": "comment",
             "type": "string",
             "required": false
         }
     ],
     "unique_keys": [
-        "дата",
-        "начало",
-        "клиент"
+        "date",
+        "start_time",
+        "client_full"
     ]
 }

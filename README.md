@@ -53,6 +53,27 @@ python src/main.py --full-refresh
 python src/main.py --deploy-schema --full-refresh
 ```
 
+## Новые инструменты (v2.1 - Modular Architecture)
+
+Добавлены специализированные инструменты для повышения надежности и скорости:
+
+- **`scripts/migrate_hst.py`**: Безопасная первичная миграция истории. Использует **Atomic Swap** (через временную таблицу `_new`), сравнивает объемы данных и проверяет дубликаты PK/Hash перед применением.
+- **`scripts/etl_diagnose.py`**: Диагностика доступа к Google Sheets, оценка объема данных и автоматический поиск строки заголовков CDC.
+- **`tests/test_schema_integrity.py`**: Автоматический тест на соответствие JSON-контрактов реальной схеме БД (защита от "расползания" структуры).
+
+### Пример быстрой миграции:
+```bash
+python scripts/migrate_hst.py --sheets sales_hst,clients_hst --confirm
+```
+
+---
+
+### Только трансформация
+Пропускает загрузку из Google Sheets, выполняет только SQL трансформации (stg_gsheets -> core).
+```bash
+python src/main.py --transform-only
+```
+
 ### Только трансформация
 Пропускает загрузку из Google Sheets, выполняет только SQL трансформации (stg_gsheets -> core).
 ```bash

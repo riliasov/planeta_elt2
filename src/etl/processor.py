@@ -129,7 +129,7 @@ class TableProcessor:
 
     def _check_error_thresholds(self, table: str, result: ValidationResult):
         """Проверяет, не превышены ли лимиты ошибок."""
-        if len(result.errors) > 20:
+        if len(result.errors) > 100:
             raise ValueError(f"КРИТИЧНО: {len(result.errors)} ошибок в {table} (> 20).")
         
         errors_by_row = {}

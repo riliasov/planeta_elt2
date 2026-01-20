@@ -46,32 +46,25 @@ sync_options:
 
 spreadsheets:
 
-  "1kt8CeDDEpJuDLX6nsr2_ZxAl4L0jg9p83wqS0VEFFr0":
-    description: "Основная историческая таблица"
-    sheets:
-
+  "1CHYvprkr6hDCujoqc8JE3j5cNIFktywTWwYWx9lqTHE":
+    description: "Основная историческая таблица (Новая)"
     sheets:
 
       - id: historical_sales
         gid: "294381083"
         description: "Продажи_hst"
-        range: "A1:ZZ"
+        range: "auto"
         target_table: stg_gsheets.sales_hst
         mode: upsert
         pk: "record_id"
         compute_row_hash: true
         date_columns:
           - sale_date
-        column_mapping:
-          content_hash: sheet_content_hash
-          created_at: sheet_created_at
-          updated_at: sheet_updated_at
-          updated_by: sheet_updated_by
 
       - id: clients_hst
         gid: "1318679629"
         description: "Клиент_hst"
-        range: "B4:ZZ"
+        range: "auto"
         target_table: stg_gsheets.clients_hst
         mode: upsert
         pk: "record_id"
@@ -79,49 +72,22 @@ spreadsheets:
         date_columns:
           - created_at
           - updated_at
-        column_mapping:
-          content_hash: sheet_content_hash
-          created_at: sheet_created_at
-          updated_at: sheet_updated_at
-          updated_by: sheet_updated_by
 
       - id: historical_expenses
         gid: "678151176"
-        description: "Расходы_hst"
-        range: "A1:ZZ"
+        description: "Расходы_hst (проверь GID, если изменился)"
+        range: "auto"
         target_table: stg_gsheets.expenses_hst
         mode: upsert
         pk: "record_id"
         compute_row_hash: true
         date_columns:
           - expense_date
-        column_mapping:
-          content_hash: sheet_content_hash
-          created_at: sheet_created_at
-          updated_at: sheet_updated_at
-          updated_by: sheet_updated_by
-
-      - id: rates
-        gid: "199220541"
-        description: "Ставки (справочник)"
-        range: "A1:ZZ"
-        target_table: stg_gsheets.rates
-        mode: replace
-        pk: "record_id"
-        compute_row_hash: false
-        date_columns:
-          - effective_from
-          - effective_to
-        column_mapping:
-          content_hash: sheet_content_hash
-          created_at: sheet_created_at
-          updated_at: sheet_updated_at
-          updated_by: sheet_updated_by
 
       - id: historical_trainings
         gid: "1195769572"
         description: "Тренировки_hst"
-        range: "A1:ZZ"
+        range: "auto"
         target_table: stg_gsheets.trainings_hst
         mode: upsert
         pk: "record_id"
@@ -129,11 +95,6 @@ spreadsheets:
         date_columns:
           - training_date
           - start_time
-        column_mapping:
-          content_hash: sheet_content_hash
-          created_at: sheet_created_at
-          updated_at: sheet_updated_at
-          updated_by: sheet_updated_by
 
   "1-kEt2r-mzqI6PmtFqcFaS7XVAPdlde5FxYMv4DXwd94":
     description: "Текущие операционные таблицы (cur)"
